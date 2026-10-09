@@ -1,0 +1,30 @@
+[
+  [
+    "How do I place an order?",
+    "Choose a product or lab test, add it to your cart and complete the checkout with your address. This demo does not place real orders."
+  ],
+  [
+    "What payment methods are accepted?",
+    "This prototype offers a simulated payment step. Live UPI, cards and cash-on-delivery can be connected through a payment provider."
+  ],
+  [
+    "How can I track my order?",
+    "Open Profile → My Orders to see your order and its current status."
+  ],
+  [
+    "Can I return or exchange a product?",
+    "Return eligibility depends on the product and its condition. The policy displayed here is sample content."
+  ],
+  [
+    "What is the delivery time?",
+    "Demo orders show an estimated delivery of 2–3 days. Lab bookings use your selected collection slot."
+  ],
+  [
+    "Do you offer discounts?",
+    "Apply MERA20 in your cart for a demo 20% discount, up to ₹200."
+  ],
+  [
+    "How can I contact customer support?",
+    "Open Profile → Customer Support to try our demo support conversation."
+  ]
+]

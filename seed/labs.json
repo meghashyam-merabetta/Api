@@ -1,0 +1,74 @@
+[
+  {
+    "id": "redcliffe",
+    "name": "Redcliffe Labs",
+    "color": "#e26570",
+    "bg": "#fff0f1",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  },
+  {
+    "id": "orange",
+    "name": "Orange Health Labs",
+    "color": "#f49a4e",
+    "bg": "#fff1e5",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  },
+  {
+    "id": "merabetta",
+    "name": "Merabetta Diagnostics",
+    "color": "#26b69c",
+    "bg": "#e8f8f2",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  },
+  {
+    "id": "citycare",
+    "name": "CityCare Labs",
+    "color": "#6796da",
+    "bg": "#edf4ff",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  },
+  {
+    "id": "wellness",
+    "name": "Wellness Path Labs",
+    "color": "#9b79ce",
+    "bg": "#f3edff",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  },
+  {
+    "id": "healthfirst",
+    "name": "HealthFirst Labs",
+    "color": "#4eaaad",
+    "bg": "#e8f7f8",
+    "description": "Home sample collection and digital reports",
+    "rating": "4.8",
+    "image": "lab.png",
+    "active": true,
+    "city": "Pune",
+    "homeCollection": true
+  }
+]

@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+
+# Local credentials and cookies
+cookies.txt
+
+# Development-only authentication bypass
+src/shared/dev-admin-auth.js

@@ -1,0 +1,30 @@
+import { app } from './app.js';
+import { env } from './config/env.js';
+import { sequelize } from './config/database.js';
+import { logger } from './config/logger.js';
+
+await sequelize.authenticate();
+const server = app.listen(env.PORT, () =>
+  logger.info({ port: env.PORT }, 'API listening'),
+);
+server.requestTimeout = 30000;
+server.headersTimeout = 15000;
+let stopping = false;
+function shutdown(signal) {
+  if (stopping) return;
+  stopping = true;
+  logger.info({ signal }, 'Shutting down');
+  const timeout = setTimeout(() => process.exit(1), 10000).unref();
+  server.close(async () => {
+    try {
+      await sequelize.close();
+      clearTimeout(timeout);
+      process.exitCode = 0;
+    } catch (err) {
+      logger.error({ err }, 'Shutdown failed');
+      process.exitCode = 1;
+    }
+  });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

@@ -1,0 +1,37 @@
+import { Router } from 'express';
+import { buildRouter } from '../shared/routes.js';
+import { authenticateCustomer } from '../shared/customer-session.js';
+import { adminAuth } from '../admin/auth/auth.controller.js';
+import { authRoutes as customerAuth } from '../app/auth/auth.routes.js';
+import { customerRoutes } from '../app/customers/customer.routes.js';
+import { productRoutes } from '../app/products/products.routes.js';
+import { cartRoutes } from '../app/cart/cart.routes.js';
+import { masterRoutes } from '../app/masters/master.routes.js';
+import { authRoutes as adminAuthRoutes } from '../admin/auth/auth.routes.js';
+import { productRoutes as adminProducts } from '../admin/products/products.routes.js';
+import { userRoutes as adminUsers } from '../admin/users/users.routes.js';
+import { adminManagementRoutes } from '../admin/management/admin.routes.js';
+import { labRoutes } from '../app/labs/lab.routes.js';
+
+// Register new modules here. Realm chooses authentication centrally.
+const modules = [
+  { path: '/app/labs', realm: 'app', routes: labRoutes },
+  { path: '/app/auth', realm: 'app', routes: customerAuth },
+  { path: '/app/customers', realm: 'app', routes: customerRoutes },
+  { path: '/app/products', realm: 'app', routes: productRoutes },
+  { path: '/app/cart', realm: 'app', routes: cartRoutes },
+  { path: '/app', realm: 'app', routes: masterRoutes },
+  { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
+  { path: '/admin/products', realm: 'admin', routes: adminProducts },
+  { path: '/admin/users', realm: 'admin', routes: adminUsers },
+  { path: '/admin/management', realm: 'admin', routes: adminManagementRoutes },
+];
+
+const authentication = { app: authenticateCustomer, admin: adminAuth.authenticate };
+export const apiRoutes = Router();
+
+for (const module of modules) {
+  const authenticate = authentication[module.realm];
+  if (!authenticate) throw new Error('Unknown route realm: ' + module.realm);
+  apiRoutes.use(module.path, buildRouter(authenticate, module.routes));
+}
