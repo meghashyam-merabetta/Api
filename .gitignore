@@ -11,3 +11,4 @@ cookies.txt
 
 # Development-only authentication bypass
 src/shared/dev-admin-auth.js
+.env.example

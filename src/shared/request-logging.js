@@ -2,6 +2,15 @@ import { env } from '../config/env.js';
 import { sanitizeLogValue } from './log-sanitizer.js';
 
 export function logRequestPayload(req, res, next) {
+  if (req.path.startsWith('/api/app/auth/otp/')) return next();
+  if (req.path.startsWith('/api/payments/') || req.path.startsWith('/api/app/orders'))
+    return next();
+  if (
+    req.path.startsWith('/api/app/redcliffe') ||
+    req.path.startsWith('/api/app/lab-bookings')
+  )
+    return next();
+  if (req.path.startsWith('/api/app/locations')) return next();
   if (env.NODE_ENV !== 'development' || !env.LOG_API_PAYLOADS) return next();
 
   let responseBody;

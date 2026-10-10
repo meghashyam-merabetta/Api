@@ -147,35 +147,3 @@ npm test
 HTTP tests use isolated in-memory model adapters with real middleware, password hashing and JWT verification. They do not substitute for testing PostgreSQL. To also run the real migration/constraint/cascade test, set `TEST_DATABASE_URL` to an **empty disposable PostgreSQL database**, then run `npm test`; the test refuses existing tables and removes the tables it creates. Without that variable, this test is reported as skipped.
 
 References: [Express production security](https://expressjs.com/en/advanced/best-practice-security.html), [Sequelize transactions](https://sequelize.org/docs/v6/other-topics/transactions/), [jsonwebtoken options](https://github.com/auth0/node-jsonwebtoken).
-
-## Admin Management
-
-Admin Management is persisted in PostgreSQL using the existing `users` identity table plus a one-to-one `admin_profiles` table.
-
-- Migration: `sql/005-admin-management.sql`
-- Model: `src/models/admin.model.js`
-- Validation: `src/admin/management/admin.schema.js`
-- Controller: `src/admin/management/admin.controller.js`
-- Routes: `src/admin/management/admin.routes.js`
-- Endpoint prefix: `/api/admin/management`
-- Permissions: `admins.read`, `admins.create`, `admins.update`, `admins.delete`, `admins.password`, `admin.manage`, `*`
-- Passwords are bcrypt-hashed in `users.passwordHash`; they are never stored in `admin_profiles`.
-- Admin deletion deactivates the account and revokes its sessions instead of hard deleting it.
-
-Bootstrap a new management admin:
-
-```bash
-ADMIN_NAME='Administrator' \
-ADMIN_EMAIL='admin@example.com' \
-ADMIN_PASSWORD='use-a-strong-password' \
-ADMIN_CITY='Mumbai' \
-ADMIN_PINCODE='400001' \
-ADMIN_STATE='Maharashtra' \
-npm run admin:create
-```
-
-Grant an existing admin full management permission:
-
-```bash
-ADMIN_EMAIL='admin@example.com' npm run admin:grant-permissions
-```

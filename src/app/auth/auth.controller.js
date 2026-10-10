@@ -18,14 +18,24 @@ import {
   OTP_MAX_ATTEMPTS,
 } from '../../shared/customer-otp.js';
 import { getCustomerAccount } from '../customers/customer.controller.js';
+import { sendLoginOtp, stplConfig } from '../stpl/client.js';
 export { getProfile as me } from '../customers/customer.controller.js';
 
 export async function requestOtp(req, res) {
-  if (env.NODE_ENV === 'production' || env.OTP_MODE !== 'development') {
+  const sms = env.OTP_MODE === 'stpl';
+  if (!sms && (env.NODE_ENV === 'production' || env.OTP_MODE !== 'development')) {
     throw new HttpError(503, 'OTP delivery provider is not configured');
   }
 
   const { method, contact } = req.validated;
+  if (sms) {
+    if (method !== 'phone')
+      throw new HttpError(
+        422,
+        'Use your mobile number to receive an OTP. Email OTP is not enabled.',
+      );
+    stplConfig();
+  }
   const id = randomUUID();
   const code = String(randomInt(100000, 1000000));
 
@@ -59,12 +69,28 @@ export async function requestOtp(req, res) {
     );
   });
 
+  if (sms) {
+    try {
+      const delivery = await sendLoginOtp(contact, code, id);
+      await sequelize.query(
+        'UPDATE customer_otp_challenges SET delivery_response=CAST(:delivery AS jsonb) WHERE id=:id',
+        { replacements: { id, delivery: JSON.stringify(delivery) }, logging: false },
+      );
+    } catch (error) {
+      await models.customerOtpChallenge.update(
+        { consumedAt: new Date() },
+        { where: { id } },
+      );
+      throw error;
+    }
+  }
   res.json({
     challengeId: id,
     expiresIn: OTP_EXPIRY_SECONDS,
     resendAfter: OTP_RESEND_SECONDS,
+    ...(!sms ? { devCode: code } : {}),
     devCode: code,
-    delivery: 'development',
+    delivery: sms ? 'sms' : 'development',
   });
 }
 
@@ -105,6 +131,7 @@ export async function verifyOtp(req, res) {
       const customer = await models.customer.create(
         {
           [challenge.method]: challenge.contact,
+          isAppRegister: true,
         },
         { transaction },
       );

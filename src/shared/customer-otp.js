@@ -2,7 +2,7 @@
 import { sequelize } from '../config/database.js';
 import { env } from '../config/env.js';
 
-export const OTP_EXPIRY_SECONDS = 300;
+export const OTP_EXPIRY_SECONDS = 600;
 export const OTP_RESEND_SECONDS = 30;
 export const OTP_MAX_ATTEMPTS = 5;
 

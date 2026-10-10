@@ -1,3 +1,7 @@
+import { bookingRoutes } from '../app/bookings/bookings.routes.js';
+import { orderRoutes } from '../app/orders/orders.routes.js';
+import { redcliffeRoutes } from '../app/redcliffe-labs/routes.js';
+import { locationRoutes } from '../app/locations/locations.routes.js';
 import { Router } from 'express';
 import { buildRouter } from '../shared/routes.js';
 import { authenticateCustomer } from '../shared/customer-session.js';
@@ -15,6 +19,10 @@ import { labRoutes } from '../app/labs/lab.routes.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
+  { path: '/app', realm: 'app', routes: orderRoutes },
+  { path: '/app/redcliffe', realm: 'app', routes: redcliffeRoutes },
+  { path: '/app/locations', realm: 'app', routes: locationRoutes },
+  { path: '/app', realm: 'app', routes: bookingRoutes },
   { path: '/app/labs', realm: 'app', routes: labRoutes },
   { path: '/app/auth', realm: 'app', routes: customerAuth },
   { path: '/app/customers', realm: 'app', routes: customerRoutes },

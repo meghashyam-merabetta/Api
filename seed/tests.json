@@ -1,0 +1,60 @@
+[
+  {
+    "id": "test-1",
+    "name": "Complete Health Checkup",
+    "subtitle": "97 parameters • Home collection",
+    "category": "Full Body",
+    "image": "lab.png",
+    "rating": "4.9",
+    "parameters": 97,
+    "groups": [
+      "Complete Blood Count (CBC)",
+      "ESR",
+      "Liver function",
+      "Glucose fasting",
+      "HbA1c",
+      "Iron studies",
+      "Kidney function",
+      "Lipid profile"
+    ]
+  },
+  {
+    "id": "test-2",
+    "name": "Thyroid Profile",
+    "subtitle": "T3, T4, TSH • 3 parameters",
+    "category": "Thyroid",
+    "image": "lab.png",
+    "rating": "4.8",
+    "parameters": 3,
+    "groups": [
+      "T3 — Triiodothyronine",
+      "T4 — Thyroxine",
+      "TSH — Thyroid stimulating hormone"
+    ]
+  },
+  {
+    "id": "test-3",
+    "name": "Vitamin D Test",
+    "subtitle": "Vitamin D (25-OH) • 1 parameter",
+    "category": "Vitamins",
+    "image": "vitamins.png",
+    "rating": "4.7",
+    "parameters": 1,
+    "groups": ["Vitamin D (25-OH)"]
+  },
+  {
+    "id": "test-4",
+    "name": "Lipid Profile",
+    "subtitle": "Heart health • 8 parameters",
+    "category": "Heart",
+    "image": "lab.png",
+    "rating": "4.8",
+    "parameters": 8,
+    "groups": [
+      "Total cholesterol",
+      "HDL cholesterol",
+      "LDL cholesterol",
+      "Triglycerides"
+    ]
+  }
+]
