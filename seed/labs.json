@@ -19,7 +19,7 @@
     "description": "Home sample collection and digital reports",
     "rating": "4.8",
     "image": "lab.png",
-    "active": true,
+    "active": false,
     "city": "Pune",
     "homeCollection": true
   },
@@ -31,7 +31,7 @@
     "description": "Home sample collection and digital reports",
     "rating": "4.8",
     "image": "lab.png",
-    "active": true,
+    "active": false,
     "city": "Pune",
     "homeCollection": true
   },
@@ -43,7 +43,7 @@
     "description": "Home sample collection and digital reports",
     "rating": "4.8",
     "image": "lab.png",
-    "active": true,
+    "active": false,
     "city": "Pune",
     "homeCollection": true
   },
@@ -55,7 +55,7 @@
     "description": "Home sample collection and digital reports",
     "rating": "4.8",
     "image": "lab.png",
-    "active": true,
+    "active": false,
     "city": "Pune",
     "homeCollection": true
   },
@@ -67,7 +67,7 @@
     "description": "Home sample collection and digital reports",
     "rating": "4.8",
     "image": "lab.png",
-    "active": true,
+    "active": false,
     "city": "Pune",
     "homeCollection": true
   }

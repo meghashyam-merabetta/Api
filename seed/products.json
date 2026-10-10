@@ -1,0 +1,82 @@
+[
+  {
+    "id": "p1",
+    "name": "Crocin Advance Tablet",
+    "subtitle": "Paracetamol 500mg | Pain relief",
+    "price": 52,
+    "mrp": 86,
+    "image": "medicine.png",
+    "rating": "4.6",
+    "categoryId": "category-1"
+  },
+  {
+    "id": "p2",
+    "name": "Daily Multivitamin",
+    "subtitle": "Daily wellness | 60 tablets",
+    "price": 349,
+    "mrp": 499,
+    "image": "vitamins.png",
+    "rating": "4.8",
+    "categoryId": "category-5"
+  },
+  {
+    "id": "p3",
+    "name": "Digital BP Monitor",
+    "subtitle": "Easy, accurate home monitoring",
+    "price": 1499,
+    "mrp": 2199,
+    "image": "device.png",
+    "rating": "4.7",
+    "categoryId": "category-2"
+  },
+  {
+    "id": "p4",
+    "name": "Gentle Face Cleanser",
+    "subtitle": "Hydrating care | 150 ml",
+    "price": 249,
+    "mrp": 349,
+    "image": "skincare.png",
+    "rating": "4.5",
+    "categoryId": "category-3"
+  },
+  {
+    "id": "p7",
+    "name": "Home Care Essentials",
+    "subtitle": "Everyday hygiene kit",
+    "price": 299,
+    "mrp": 449,
+    "image": "skincare.png",
+    "rating": "4.6",
+    "categoryId": "category-3"
+  },
+  {
+    "id": "p8",
+    "name": "Adult Pull-Up Diapers",
+    "subtitle": "Large size | Pack of 10",
+    "categoryId": "category-9",
+    "price": 449,
+    "mrp": 599,
+    "image": "diapers.png",
+    "rating": "4.7"
+  },
+  {
+    "id": "p9",
+    "name": "Adjustable Walking Stick",
+    "subtitle": "Height-adjustable | Single stick",
+    "categoryId": "category-10",
+    "price": 699,
+    "mrp": 999,
+    "image": "mobility.png",
+    "rating": "4.8"
+  },
+  {
+    "id": "p10",
+    "name": "Senior Care Recliner",
+    "subtitle": "Padded recliner | Beige",
+    "categoryId": "category-11",
+    "price": 14999,
+    "mrp": 19999,
+    "image": "furniture.png",
+    "rating": "4.6"
+  }
+]

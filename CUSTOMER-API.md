@@ -49,7 +49,7 @@ All paths below are relative to `/api/app`. JSON requests are required.
 | PUT, DELETE | /customers/me/family-members/:id | Update / soft-delete owned member |
 | DELETE | /customers/me | Soft-delete account and revoke sessions |
 
-Address fields: `line1`, `line2`, `landmark`, `state`, `city`, `postalCode`. Member fields: `name`, `relationship` (Self, Mother, Father, Spouse, Grandparent, Other), optional `phone` (ten digits). Customer, member and address IDs are UUIDs. Addresses belong to the logged-in customer independently of family members.
+Address fields: `line1`, `line2`, `landmark`, `state`, `city`, `postalCode`. Member fields: `name`, `relationship` (Self, Mother, Father, Spouse, Grandparent, Other), optional `phone` (ten digits), required `dateOfBirth` (YYYY-MM-DD; valid non-future date, age 0?120 years) and `gender` (Female, Male, Other, Prefer not to say). Run `npm run db:migrate` to apply `006-family-member-birthdate.sql` before starting the updated API. Customer, member and address IDs are UUIDs. Addresses belong to the logged-in customer independently of family members.
 
 Account responses contain `user`, `identities`, `addresses`, `members`. `user.profileCompleted` controls onboarding versus Home. First profile completion atomically saves the profile, initial address and Self member. Repeating completion does not duplicate them. Secondary profile email/phone is contact information, not automatically a verified login identity. Use the original verified contact to return to that account; linking another login identity requires a separate verification flow.
 
@@ -60,3 +60,5 @@ Browsers use an HttpOnly cookie; native requests send `X-App-Client: native` and
 In `Mera Beta/.env`, set `EXPO_PUBLIC_CUSTOMER_API_URL` to the API origin, e.g. `http://192.168.1.10:3000` for a phone on the same Wi-Fi. Development native builds otherwise infer the Expo host; web defaults to localhost:3000. For mobile web, explicitly configure the computer LAN API URL and allow the corresponding web origin. Production requires an explicit HTTPS API URL. Restart Expo after changing environment variables. Existing custom native development builds must be rebuilt to include Expo SecureStore.
 
 Run `node test/customer.integration.test.js` in API with the local database available. It uses isolated test identities and removes its records afterward. Run `npm run lint` in API and `npm run typecheck` in the app. Product/order persistence remains the existing app implementation; this change binds customer authentication, profile, family and addresses.
+
+Family member create/update calculates `age` on the server from `dateOfBirth` and saves both. Responses include both fields; stored age represents age at the last save.

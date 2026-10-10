@@ -2,6 +2,17 @@ import { models } from '../../models/index.js';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
 import { clearCustomerCookie } from '../../shared/customer-session.js';
+import { ageFromBirthdate } from '../../shared/birthdate.js';
+
+// Derive both columns from the validated pin to keep one source of truth.
+function addressFields(address) {
+  return {
+    ...address,
+    location: address.location ?? null,
+    latitude: address.location?.latitude ?? null,
+    longitude: address.location?.longitude ?? null,
+  };
+}
 
 export async function getProfile(req, res) {
   const account = await getCustomerAccount(req.credential.id);
@@ -33,13 +44,20 @@ export async function updateProfile(req, res) {
     const firstCompletion = !customer.profileCompleted;
     await customer.update({ ...profile, profileCompleted: true }, { transaction });
     if (firstCompletion) {
-      await models.customerAddress.create({ ...address, customerId }, { transaction });
+      if (address)
+        await models.customerAddress.create(
+          { ...addressFields(address), customerId },
+          { transaction },
+        );
       await models.customerFamilyMember.create(
         {
           customerId,
           name: profile.firstName + ' ' + profile.lastName,
           relationship: 'Self',
           phone: profile.phone,
+          dateOfBirth: profile.dateOfBirth,
+          age: ageFromBirthdate(profile.dateOfBirth),
+          gender: profile.gender,
         },
         { transaction },
       );
@@ -57,7 +75,7 @@ export async function listAddresses(req, res) {
 
 export async function addAddress(req, res) {
   await models.customerAddress.create({
-    ...req.validated,
+    ...addressFields(req.validated),
     customerId: req.credential.id,
   });
   const account = await getCustomerAccount(req.credential.id);
@@ -70,7 +88,7 @@ export async function updateAddress(req, res) {
     req.validatedParams.id,
     req.credential.id,
   );
-  await address.update(req.validated);
+  await address.update(addressFields(req.validated));
   const account = await getCustomerAccount(req.credential.id);
   res.json(account);
 }
@@ -160,6 +178,11 @@ export async function getCustomerAccount(customerId, transaction) {
       'state',
       'city',
       'postalCode',
+      'houseNumber',
+      'buildingName',
+      'location',
+      'latitude',
+      'longitude',
     ],
     order: [['createdAt', 'ASC']],
     raw: true,
@@ -167,7 +190,7 @@ export async function getCustomerAccount(customerId, transaction) {
   });
   const members = await models.customerFamilyMember.findAll({
     where: { customerId },
-    attributes: ['id', 'name', 'relationship', 'phone'],
+    attributes: ['id', 'name', 'relationship', 'phone', 'age', 'gender', 'dateOfBirth'],
     order: [['createdAt', 'ASC']],
     raw: true,
     transaction,

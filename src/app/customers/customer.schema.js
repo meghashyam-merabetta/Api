@@ -1,4 +1,5 @@
 ﻿import { z } from 'zod';
+import { ageFromBirthdate } from '../../shared/birthdate.js';
 import { customerPhone, customerEmail } from '../../shared/customer.schema.js';
 
 export const recordIdSchema = z.object({ id: z.uuid() }).strict();
@@ -11,19 +12,45 @@ export const addressSchema = z
     state: z.string().trim().min(2).max(100),
     city: z.string().trim().min(2).max(100),
     postalCode: z.string().regex(/^[1-9]\d{5}$/),
+    houseNumber: z.string().trim().max(100).default(''),
+    buildingName: z.string().trim().max(200).default(''),
+    location: z
+      .object({
+        provider: z.literal('locationiq'),
+        placeId: z.string().max(200),
+        displayName: z.string().min(1).max(2000),
+        latitude: z.number().min(-85).max(85),
+        longitude: z.number().min(-180).max(180),
+        address: z.record(z.string(), z.string()),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (address) => !address.location || !!address.houseNumber,
+    'Enter your house / flat number.',
+  );
 
 export const familyMemberSchema = z
   .object({
     name: z.string().trim().min(2).max(200),
     relationship: z.enum(['Self', 'Mother', 'Father', 'Spouse', 'Grandparent', 'Other']),
+    dateOfBirth: z
+      .string()
+      .refine(
+        (value) => ageFromBirthdate(value) !== null,
+        'Enter a valid birthdate (age 0 to 120 years, not in the future)',
+      ),
+    gender: z.enum(['Female', 'Male', 'Other', 'Prefer not to say']),
     phone: z
       .union([customerPhone, z.literal('')])
       .optional()
       .default(''),
   })
-  .strict();
+  .strict()
+  .transform((member) => ({ ...member, age: ageFromBirthdate(member.dateOfBirth) }));
 
 function isValidBirthDate(value) {
   const date = new Date(value + 'T00:00:00Z');
@@ -47,6 +74,6 @@ export const updateProfileSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .refine(isValidBirthDate, 'Invalid date of birth'),
     gender: z.enum(['Female', 'Male', 'Other', 'Prefer not to say']),
-    address: addressSchema,
+    address: addressSchema.optional(),
   })
   .strict();

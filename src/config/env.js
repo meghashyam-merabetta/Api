@@ -9,7 +9,32 @@ const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-    OTP_MODE: z.enum(['development', 'disabled']).default('disabled'),
+    LOCATIONIQ_API_KEY: z.string().trim().default(''),
+    REDCLIFFE_BASE_URL: z.string().trim().default(''),
+    REDCLIFFE_API_KEY: z.string().trim().default(''),
+    HDFC_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+    HDFC_MERCHANT_ID: z.string().trim().default(''),
+    HDFC_API_KEY: z.string().trim().default(''),
+    HDFC_CLIENT_ID: z.string().trim().default(''),
+    HDFC_RETURN_URL: z.string().trim().default(''),
+    HDFC_WEBHOOK_USER: z.string().trim().default(''),
+    HDFC_WEBHOOK_PASSWORD: z.string().default(''),
+    ANDROID_MIN_BUILD: z.coerce.number().int().min(0).default(0),
+    IOS_MIN_BUILD: z.coerce.number().int().min(0).default(0),
+    ANDROID_STORE_URL: z
+      .string()
+      .trim()
+      .default('https://play.google.com/store/apps/details?id=com.merabetta.app'),
+    IOS_STORE_URL: z.string().trim().default(''),
+    OTP_MODE: z.enum(['development', 'disabled', 'stpl']).default('disabled'),
+    STPL_BASE_URL: z.string().trim().default(''),
+    STPL_USERNAME: z.string().trim().default(''),
+    STPL_PASSWORD: z.string().default(''),
+    STPL_SENDER_ID: z.string().trim().default(''),
+    STPL_TEMPLATE_ID: z.string().trim().default(''),
+    STPL_DLT_CONTENT_ID: z.string().trim().default(''),
+    STPL_OTP_TEMPLATE: z.string().default(''),
+    STPL_UNICODE: z.enum(['true', 'false']).default('false'),
     LOG_API_PAYLOADS: z
       .enum(['true', 'false'])
       .default('true')

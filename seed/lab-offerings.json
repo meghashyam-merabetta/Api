@@ -1,0 +1,211 @@
+[
+  {
+    "id": "l1",
+    "labId": "redcliffe",
+    "testId": "test-1",
+    "price": 999,
+    "mrp": 2499,
+    "reportHours": 12,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "l2",
+    "labId": "redcliffe",
+    "testId": "test-2",
+    "price": 499,
+    "mrp": 899,
+    "reportHours": 12,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "l3",
+    "labId": "redcliffe",
+    "testId": "test-3",
+    "price": 799,
+    "mrp": 1499,
+    "reportHours": 12,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "l4",
+    "labId": "redcliffe",
+    "testId": "test-4",
+    "price": 599,
+    "mrp": 1199,
+    "reportHours": 12,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "orange-test-1",
+    "labId": "orange",
+    "testId": "test-1",
+    "price": 1079,
+    "mrp": 2599,
+    "reportHours": 18,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "orange-test-2",
+    "labId": "orange",
+    "testId": "test-2",
+    "price": 564,
+    "mrp": 999,
+    "reportHours": 18,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "orange-test-3",
+    "labId": "orange",
+    "testId": "test-3",
+    "price": 849,
+    "mrp": 1599,
+    "reportHours": 18,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "merabetta-test-1",
+    "labId": "merabetta",
+    "testId": "test-1",
+    "price": 1159,
+    "mrp": 2699,
+    "reportHours": 24,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "merabetta-test-2",
+    "labId": "merabetta",
+    "testId": "test-2",
+    "price": 629,
+    "mrp": 1099,
+    "reportHours": 24,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "merabetta-test-4",
+    "labId": "merabetta",
+    "testId": "test-4",
+    "price": 669,
+    "mrp": 1399,
+    "reportHours": 24,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "citycare-test-1",
+    "labId": "citycare",
+    "testId": "test-1",
+    "price": 1239,
+    "mrp": 2799,
+    "reportHours": 30,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "citycare-test-3",
+    "labId": "citycare",
+    "testId": "test-3",
+    "price": 949,
+    "mrp": 1799,
+    "reportHours": 30,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "citycare-test-4",
+    "labId": "citycare",
+    "testId": "test-4",
+    "price": 704,
+    "mrp": 1499,
+    "reportHours": 30,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "wellness-test-2",
+    "labId": "wellness",
+    "testId": "test-2",
+    "price": 759,
+    "mrp": 1299,
+    "reportHours": 36,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "wellness-test-3",
+    "labId": "wellness",
+    "testId": "test-3",
+    "price": 999,
+    "mrp": 1899,
+    "reportHours": 36,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "wellness-test-4",
+    "labId": "wellness",
+    "testId": "test-4",
+    "price": 739,
+    "mrp": 1599,
+    "reportHours": 36,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "healthfirst-test-1",
+    "labId": "healthfirst",
+    "testId": "test-1",
+    "price": 1399,
+    "mrp": 2999,
+    "reportHours": 42,
+    "sampleType": "Blood sample",
+    "fasting": "8–12 hours; confirm with lab",
+    "available": true
+  },
+  {
+    "id": "healthfirst-test-2",
+    "labId": "healthfirst",
+    "testId": "test-2",
+    "price": 824,
+    "mrp": 1399,
+    "reportHours": 42,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  },
+  {
+    "id": "healthfirst-test-3",
+    "labId": "healthfirst",
+    "testId": "test-3",
+    "price": 1049,
+    "mrp": 1999,
+    "reportHours": 42,
+    "sampleType": "Blood sample",
+    "fasting": "No fasting required",
+    "available": true
+  }
+]

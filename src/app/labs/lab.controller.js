@@ -3,7 +3,7 @@ import { models } from '../../models/index.js';
 
 export async function lablisting(req, res) {
   const { page, limit, search, city, homeCollection } = req.validatedQuery;
-  const where = { active: true };
+  const where = {};
 
   if (search) {
     // Treat wildcard characters as ordinary search text.
