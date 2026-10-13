@@ -12,7 +12,8 @@ import { productRoutes } from '../app/products/products.routes.js';
 import { cartRoutes } from '../app/cart/cart.routes.js';
 import { masterRoutes } from '../app/masters/master.routes.js';
 import { authRoutes as adminAuthRoutes } from '../admin/auth/auth.routes.js';
-import { productRoutes as adminProducts } from '../admin/products/products.routes.js';
+import { productsRoutes as adminProducts } from '../admin/products/products.routes.js';
+import { categoriesRoutes as adminCategories } from '../admin/categories/categories.routes.js';
 import { userRoutes as adminUsers } from '../admin/users/users.routes.js';
 import { adminManagementRoutes } from '../admin/management/admin.routes.js';
 import { labRoutes } from '../app/labs/lab.routes.js';
@@ -31,6 +32,7 @@ const modules = [
   { path: '/app', realm: 'app', routes: masterRoutes },
   { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
   { path: '/admin/products', realm: 'admin', routes: adminProducts },
+  { path: '/admin/categories', realm: 'admin', routes: adminCategories },
   { path: '/admin/users', realm: 'admin', routes: adminUsers },
   { path: '/admin/management', realm: 'admin', routes: adminManagementRoutes },
 ];

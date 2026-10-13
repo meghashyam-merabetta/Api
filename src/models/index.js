@@ -14,6 +14,8 @@ import {
 import { Faq, MasterState, MasterCity } from './master.model.js';
 import { Lab } from './lab.model.js';
 import { AdminProfile } from './admin.model.js';
+import { Product } from './product.model.js';
+import { Category } from './category.model.js';
 
 export const models = {
   lab: Lab,
@@ -29,4 +31,26 @@ export const models = {
   masterState: MasterState,
   masterCity: MasterCity,
   adminProfile: AdminProfile,
+  product: Product, 
+  category: Category,
 };
+
+Category.hasMany(Product, {
+  foreignKey: 'category_id',
+  as: 'products',
+});
+
+Product.belongsTo(Category, {
+  foreignKey: 'category_id',
+  as: 'category',
+});
+
+Category.belongsTo(Category, {
+  foreignKey: 'parent_category_id',
+  as: 'parent',
+});
+
+Category.hasMany(Category, {
+  foreignKey: 'parent_category_id',
+  as: 'subcategories',
+});
