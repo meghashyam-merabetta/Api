@@ -87,6 +87,7 @@ export const locationRoutes = [
   {
     method: 'get',
     path: '/search',
+    auth: false,
     middleware: [limit],
     query: z.object({ q: z.string().trim().min(3).max(200) }).strict(),
     handler: async (req, res) => {
@@ -107,6 +108,7 @@ export const locationRoutes = [
   {
     method: 'get',
     path: '/reverse',
+    auth: false,
     middleware: [limit],
     query: z.object(coordinates).strict(),
     handler: async (req, res) => {
@@ -134,6 +136,7 @@ export const locationRoutes = [
   {
     method: 'get',
     path: '/map',
+    auth: false,
     middleware: [limit],
     query: z
       .object({ ...coordinates, zoom: z.coerce.number().int().min(10).max(18) })

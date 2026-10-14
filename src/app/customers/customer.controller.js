@@ -144,6 +144,11 @@ export async function deleteFamilyMember(req, res) {
 export async function deleteAccount(req, res) {
   const customerId = req.credential.id;
   await sequelize.transaction(async (transaction) => {
+    for (const table of ['customer_cart_items', 'customer_wishlist_items']) {
+      await sequelize.query(`DELETE FROM ${table} WHERE customer_id=:customerId`, {
+        replacements: { customerId }, transaction,
+      });
+    }
     for (const Model of [
       models.customerAddress,
       models.customerFamilyMember,

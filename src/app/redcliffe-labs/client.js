@@ -30,7 +30,7 @@ export function slotErrorMessage(data, fallback) {
 
 export async function providerRequest(
   path,
-  { query = {}, body, fetchImpl = fetch } = {},
+  { query = {}, page, body, fetchImpl = fetch } = {},
 ) {
   if (!env.REDCLIFFE_BASE_URL || !env.REDCLIFFE_API_KEY)
     throw new HttpError(
@@ -52,6 +52,7 @@ export async function providerRequest(
     throw new Error('Unknown provider endpoint');
   const url = new URL(path, base.origin);
   url.search = new URLSearchParams(query).toString();
+  if (page !== undefined) url.searchParams.set('page', String(page));
   const started = Date.now();
   const context = {
     provider: 'redcliffe',
