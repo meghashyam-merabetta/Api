@@ -3,22 +3,25 @@ import { catalog, parameters } from './catalog.js';
 import { collectionDates, slots } from './slots.js';
 
 export const redcliffeRoutes = [
-  { method: 'get', path: '/catalog', handler: catalog },
+  { method: 'get', path: '/catalog', auth: false, handler: catalog },
   {
     method: 'get',
     path: '/packages/:code/parameters',
+    auth: false,
     params: z.object({ code: z.string().min(1).max(85) }).strict(),
     handler: parameters,
   },
   {
     method: 'get',
     path: '/dates',
+    auth: false,
     handler: (_req, res) =>
       res.json({ dates: collectionDates(), timeZone: 'Asia/Kolkata' }),
   },
   {
     method: 'get',
     path: '/slots',
+    auth: false,
     query: z
       .object({
         collectionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

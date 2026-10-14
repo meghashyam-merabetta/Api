@@ -26,7 +26,19 @@ const schema = z
       .trim()
       .default('https://play.google.com/store/apps/details?id=com.merabetta.app'),
     IOS_STORE_URL: z.string().trim().default(''),
-    OTP_MODE: z.enum(['development', 'disabled', 'stpl']).default('disabled'),
+    OTP_MODE: z.enum(['development', 'disabled', 'stpl', 'msg91']).default('disabled'),
+    EMAIL_OTP_MODE: z.enum(['inherit', 'disabled', 'smtp']).default('inherit'),
+    SMTP_HOST: z.string().trim().default(''),
+    SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+    SMTP_SECURE: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    SMTP_USER: z.string().trim().default(''),
+    SMTP_PASSWORD: z.string().default(''),
+    SMTP_FROM: z.string().trim().default(''),
+    MSG91_AUTH_KEY: z.string().trim().default(''),
+    MSG91_TEMPLATE_ID: z.string().trim().default(''),
     STPL_BASE_URL: z.string().trim().default(''),
     STPL_USERNAME: z.string().trim().default(''),
     STPL_PASSWORD: z.string().default(''),

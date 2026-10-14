@@ -32,5 +32,7 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/014-product-orders.sql', import.meta.url), 'utf8'));
   for (const product of JSON.parse(readFileSync(new URL('../seed/products.json', import.meta.url), 'utf8'))) await sequelize.query('INSERT INTO product_catalog(id,data) VALUES(:id,CAST(:data AS jsonb)) ON CONFLICT(id) DO NOTHING', { replacements: {id: product.id, data: JSON.stringify(product)} });
   await sequelize.query(readFileSync(new URL('../sql/015-stpl-otp.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/016-cart-wishlist.sql', import.meta.url), 'utf8'));
   console.log('Customer schema ready.');
+  await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
 } finally { await sequelize.close(); }

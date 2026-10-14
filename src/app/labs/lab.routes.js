@@ -5,7 +5,7 @@ export const labRoutes = [
   {
     method: 'get',
     path: '/lablisting',
-    auth: true,
+    auth: false,
     query: schema.labListingSchema,
     handler: controller.lablisting,
   },

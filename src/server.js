@@ -2,8 +2,10 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 import { sequelize } from './config/database.js';
 import { logger } from './config/logger.js';
+import { startCatalogSyncWorker } from './app/redcliffe-labs/catalog.js';
 
 await sequelize.authenticate();
+const stopCatalogSyncWorker = startCatalogSyncWorker();
 const server = app.listen(env.PORT, () =>
   logger.info({ port: env.PORT }, 'API listening'),
 );
@@ -13,6 +15,7 @@ let stopping = false;
 function shutdown(signal) {
   if (stopping) return;
   stopping = true;
+  stopCatalogSyncWorker();
   logger.info({ signal }, 'Shutting down');
   const timeout = setTimeout(() => process.exit(1), 10000).unref();
   server.close(async () => {

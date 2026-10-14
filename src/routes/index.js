@@ -10,6 +10,7 @@ import { authRoutes as customerAuth } from '../app/auth/auth.routes.js';
 import { customerRoutes } from '../app/customers/customer.routes.js';
 import { productRoutes } from '../app/products/products.routes.js';
 import { cartRoutes } from '../app/cart/cart.routes.js';
+import { wishlistRoutes } from '../app/wishlist/wishlist.routes.js';
 import { masterRoutes } from '../app/masters/master.routes.js';
 import { authRoutes as adminAuthRoutes } from '../admin/auth/auth.routes.js';
 import { productsRoutes as adminProducts } from '../admin/products/products.routes.js';
@@ -29,6 +30,7 @@ const modules = [
   { path: '/app/customers', realm: 'app', routes: customerRoutes },
   { path: '/app/products', realm: 'app', routes: productRoutes },
   { path: '/app/cart', realm: 'app', routes: cartRoutes },
+  { path: '/app/wishlist', realm: 'app', routes: wishlistRoutes },
   { path: '/app', realm: 'app', routes: masterRoutes },
   { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
   { path: '/admin/products', realm: 'admin', routes: adminProducts },
