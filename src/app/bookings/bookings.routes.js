@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { couponCodeSchema } from '../coupons/routes.js';
 import * as controller from './bookings.controller.js';
 import { addressSchema } from '../customers/customer.schema.js';
 import { cancelBooking } from '../redcliffe-labs/status.js';
@@ -6,6 +7,7 @@ import { amendBooking } from '../redcliffe-labs/amendment.js';
 import { downloadReport } from '../redcliffe-labs/reports.js';
 export const bookingSchema = z
   .object({
+    couponCode: couponCodeSchema,
     requestKey: z.string().min(10).max(100),
     memberId: z.uuid(),
     address: addressSchema,

@@ -11,6 +11,12 @@ export const loginLimiter = () =>
   });
 export function csrfGuard(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  // Public, cookie-independent form submissions do not use customer authority.
+  if (req.method === 'POST' && req.path === '/api/app/contact-enquiries') {
+    if (!req.is('application/json'))
+      throw new HttpError(415, 'Content-Type must be application/json');
+    return next();
+  }
   const nativeAppRequest =
     req.path.startsWith('/api/app/') &&
     req.get('x-app-client') === 'native' &&

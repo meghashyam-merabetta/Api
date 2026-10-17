@@ -4,6 +4,8 @@ import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
 import { env } from '../../config/env.js';
 import { gatewayRequest, paymentUrl, requireGateway } from '../hdfc/client.js';
+import { resolveCoupon } from '../coupons/routes.js';
+import { couponDiscount } from '../coupons/pricing.js';
 export function paise(value) {
   const text = String(value);
   if (!/^\d+(\.\d{1,2})?$/.test(text)) throw new HttpError(422, 'Invalid amount');
@@ -121,7 +123,8 @@ export async function createOrder(req, res) {
       subtotal += unit * item.quantity;
       items.push({ ...item, snapshot: product.data });
     }
-    const discount = b.coupon ? Math.min(20000, Math.round(subtotal * 0.2)) : 0;
+    const coupon = await resolveCoupon(b.couponCode, 'products', transaction);
+    const discount = couponDiscount(subtotal, coupon);
     const delivery = subtotal >= 49900 ? 0 : 4000;
     const total = subtotal - discount + delivery;
     const id = 'MB' + randomBytes(9).toString('hex');
@@ -134,6 +137,8 @@ export async function createOrder(req, res) {
       total: total / 100,
       subtotal: subtotal / 100,
       discount: discount / 100,
+      couponCode: coupon?.code || null,
+      coupon,
       delivery: delivery / 100,
       items,
       address: [
