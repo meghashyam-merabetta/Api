@@ -7,6 +7,10 @@ import { ageFromBirthdate } from '../../shared/birthdate.js';
 import { paths, providerRequest, providerSucceeded } from './client.js';
 import { availableSlots, todayInIndia } from './slots.js';
 
+import { resolveCoupon } from '../coupons/routes.js';
+import { labPricing } from '../coupons/pricing.js';
+import { paise } from '../orders/orders.controller.js';
+
 export function bookingPayload(
   customer,
   member,
@@ -147,6 +151,11 @@ export async function createBooking(req, res) {
       throw new HttpError(422, 'A selected test is unavailable. Refresh the test list.');
     items.push({ id: item.id, quantity: 1, snapshot: rows[0].catalog_data });
   }
+  const coupon = await resolveCoupon(b.couponCode, 'labs');
+  const pricing = labPricing(
+    items.reduce((sum, item) => sum + paise(item.snapshot.price), 0),
+    coupon,
+  );
   const id = randomUUID();
   const outgoing = bookingPayload(
     customer,
@@ -157,6 +166,7 @@ export async function createBooking(req, res) {
     b.slotId,
     id,
   );
+  if (coupon) outgoing.center_discount = pricing.discount;
   const availability = await availableSlots(
     b.collectionDate,
     outgoing.customer_latitude,
@@ -175,7 +185,10 @@ export async function createBooking(req, res) {
     date: new Date().toISOString(),
     status: 'Booking pending',
     paymentStatus: 'Payment to Redcliffe',
-    total: items.reduce((sum, item) => sum + item.snapshot.price, 0),
+    ...pricing,
+    pricingVersion: 1,
+    couponCode: coupon?.code || null,
+    coupon,
     items,
     address: [
       outgoing.customer_address,
@@ -288,7 +301,7 @@ export async function createBooking(req, res) {
     Number.isFinite(providerTotal) &&
     providerTotal >= 0
   )
-    order.total = providerTotal;
+    order.providerTotal = providerTotal;
   // Persist the external ID before attempting confirmation. A failed confirmation must not create a second booking.
   await updateBooking(id, 'confirming', order, {
     providerId: String(providerId),

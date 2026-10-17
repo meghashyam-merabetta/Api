@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { couponCodeSchema } from '../coupons/routes.js';
 import { addressSchema } from '../customers/customer.schema.js';
 import { createOrder, getOrder, listOrders } from './orders.controller.js';
 export const orderSchema = z
   .object({
+    couponCode: couponCodeSchema,
     requestKey: z.string().min(10).max(100),
     items: z
       .array(
@@ -18,7 +20,7 @@ export const orderSchema = z
       .refine((items) => new Set(items.map((i) => i.id)).size === items.length),
     address: addressSchema,
     notes: z.string().trim().max(1000).default(''),
-    coupon: z.boolean().default(false),
+    coupon: z.literal(false).optional(),
   })
   .strict();
 export const orderRoutes = [

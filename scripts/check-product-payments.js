@@ -5,6 +5,7 @@ import {sequelize} from '../src/config/database.js';
 import {env} from '../src/config/env.js';
 import {createOrder,findOrder,syncOrder,paise,verifiedStatus} from '../src/app/orders/orders.controller.js';
 import {paymentWebhook} from '../src/app/hdfc/callbacks.js';
+const couponCode="CHECK_"+randomUUID().replaceAll("-", "").toUpperCase();
 const customerId=randomUUID();const saved={...env};const original=global.fetch;let id,calls=0,amount;
 try{
  Object.assign(env,{HDFC_ENVIRONMENT:'sandbox',HDFC_API_KEY:'mocksecret',HDFC_MERCHANT_ID:'mockmerchant',HDFC_CLIENT_ID:'hdfcmaster',HDFC_RETURN_URL:'https://merchant.example/api/payments/hdfc/return',HDFC_WEBHOOK_USER:'hook',HDFC_WEBHOOK_PASSWORD:'secret'});
@@ -28,10 +29,13 @@ try{
  const paid=await syncOrder(before);assert.equal(paid.payment_status,'CHARGED');assert.equal(paid.payload.status,'Processing');assert.equal(paid.payload.paymentStatus,'Paid');
  await paymentWebhook({get:()=> 'Basic '+Buffer.from('hook:secret').toString('base64'),body:{content:{order:{order_id:id,status:'FAILED'}}}},res);
  assert.equal((await findOrder(id)).payment_status,'CHARGED');
+ await sequelize.query("INSERT INTO coupons(code,scope,percent,max_discount_paise,active) VALUES(:code,'both',10,10000,true)",{replacements:{code:couponCode}});
+ await createOrder({...req,validated:{...req.validated,requestKey:randomUUID(),couponCode}},res);
+ assert.equal(result.discount,10.4);assert.equal(result.total,133.6);assert.equal(amount,'133.60');assert.equal(result.couponCode,couponCode);
  console.log('PASS: DB order/details, server pricing, session idempotency, amount verification, ownership, webhook authentication, paid-state protection. No real payments sent.');
 }finally{
  global.fetch=original;Object.assign(env,saved);
  await sequelize.query('DELETE FROM order_details WHERE order_id IN (SELECT id FROM orders WHERE customer_id=:id)',{replacements:{id:customerId}});
  await sequelize.query('DELETE FROM orders WHERE customer_id=:id',{replacements:{id:customerId}});
- await models.customer.destroy({where:{id:customerId},force:true});await sequelize.close();
+ await models.customer.destroy({where:{id:customerId},force:true});await sequelize.query('DELETE FROM coupons WHERE code=:code',{replacements:{code:couponCode}});await sequelize.close();
 }

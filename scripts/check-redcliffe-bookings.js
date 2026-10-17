@@ -10,7 +10,8 @@ import { bookingSchema } from '../src/app/bookings/bookings.routes.js';
 
 const customerId = randomUUID(), code = 'TEST-' + randomUUID(), packageId = 'redcliffe:' + code;
 const originalFetch = globalThis.fetch, originalBase = env.REDCLIFFE_BASE_URL, originalKey = env.REDCLIFFE_API_KEY;
-let createCalls = 0, confirmCalls = 0, timeout = false;
+let createCalls = 0, confirmCalls = 0, timeout = false, expectedDiscount;
+const couponCode = "CHECK_" + randomUUID().replaceAll("-", "").toUpperCase();
 try {
   env.REDCLIFFE_BASE_URL = 'https://test.invalid'; env.REDCLIFFE_API_KEY = 'test-key';
   globalThis.fetch = async (url, options) => {
@@ -20,7 +21,7 @@ try {
       createCalls++;
       if (timeout) throw new Error('Simulated unknown transport outcome');
       const body = JSON.parse(options.body);
-      assert.equal(body.client_refid, customerId); assert.equal(body.is_credit, false); assert.equal(body.center_discount, undefined);
+      assert.equal(body.client_refid, customerId); assert.equal(body.is_credit, false); assert.equal(body.center_discount, expectedDiscount);
       assert.equal(body.customer_phonenumber, '9123456789'); assert.equal(body.customer_altphonenumber, '9876543210');
       return new Response(JSON.stringify({ status: 'success', booking_id: 'mock-' + randomUUID(), discounted_price: { final_total_price: 250 } }));
     }
@@ -36,7 +37,7 @@ try {
   const response = { status() { return this; }, json(value) { result = value; } };
   const req = { credential: customer.get({ plain: true }), validated: body };
   await createBooking(req, response);
-  assert.equal(result.status, 'Confirmed'); assert.equal(result.total, 250);
+  assert.equal(result.status, 'Confirmed'); assert.equal(result.total, 400); assert.equal(result.collection, 150);
   const id = result.id;
   await createBooking(req, response);
   assert.equal(result.id, id); assert.equal(createCalls, 1); assert.equal(confirmCalls, 1);
@@ -58,6 +59,13 @@ try {
   await createBooking({ ...req, validated: { ...body, requestKey: randomUUID(), collectionDate: collectionDates()[2] } }, response);
   assert.equal(result.status, 'Confirmed');
   assert.equal(createCalls, 3);
+  await sequelize.query("INSERT INTO coupons(code,scope,percent,max_discount_paise,active) VALUES(:code,'labs',10,10000,true)", { replacements: { code: couponCode } });
+  expectedDiscount = 25;
+  await createBooking({ ...req, validated: { ...body, requestKey: randomUUID(), couponCode, collectionDate: collectionDates()[3] } }, response);
+  assert.equal(result.discount, 25); assert.equal(result.total, 375); assert.equal(result.couponCode, couponCode);
+  const couponBookingId = result.id;
+  const [couponSaved] = await sequelize.query('SELECT provider_request FROM lab_bookings WHERE id=:id', { replacements: { id: couponBookingId } });
+  assert.equal(couponSaved[0].provider_request.center_discount, 25);
   console.log('PASS: provider payload/contact mapping, durable create + confirm, retry idempotency, changed-payload conflict, uncertain outcome blocks duplicate submission. No real provider bookings were sent.');
 } finally {
   globalThis.fetch = originalFetch; env.REDCLIFFE_BASE_URL = originalBase; env.REDCLIFFE_API_KEY = originalKey;
@@ -65,5 +73,6 @@ try {
   await sequelize.query('DELETE FROM lab_packages WHERE id=:id', { replacements: { id: packageId } });
   await models.customerFamilyMember.destroy({ where: { customerId }, force: true });
   await models.customer.destroy({ where: { id: customerId }, force: true });
+  await sequelize.query('DELETE FROM coupons WHERE code=:code', { replacements: { code: couponCode } });
   await sequelize.close();
 }

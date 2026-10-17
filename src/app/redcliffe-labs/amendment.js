@@ -105,11 +105,26 @@ export async function amendBooking(req, res) {
     const added = items.filter((i) => !existing.includes(i.snapshot.packageCode));
     if (!added.length) throw new HttpError(422, 'Choose a new test to add.');
     body = {
-      center_discount: 0,
+      center_discount: order.discount || 0,
       packages: [...new Set([...existing, ...added.map((i) => i.snapshot.packageCode)])],
     };
     path = `/api/external/v2/open-set-package/${row.provider_booking_id}/`;
     order.items.push(...added);
+  }
+  if (order.pricingVersion === 1) {
+    const allItems = [
+      ...order.items,
+      ...(order.additionalMembers || []).flatMap((member) => member.items),
+    ];
+    order.subtotal =
+      allItems.reduce(
+        (sum, item) => sum + Math.round(item.snapshot.price * 100) * item.quantity,
+        0,
+      ) / 100;
+    // Preserve the discount already granted; amendments do not redeem another coupon.
+    order.collection = order.subtotal - order.discount < 599 ? 150 : 0;
+    order.total =
+      Math.round((order.subtotal - order.discount + order.collection) * 100) / 100;
   }
   const amendment = {
     key: b.requestKey,
@@ -169,7 +184,11 @@ export async function amendBooking(req, res) {
     );
   }
   const price = result.discounted_price?.final_total_price;
-  if (
+  if (order.pricingVersion === 1) {
+    if (price !== null && price !== undefined && Number.isFinite(Number(price)))
+      order.providerTotal = Number(price);
+    order.totalEstimated = false;
+  } else if (
     price !== null &&
     price !== undefined &&
     Number.isFinite(Number(price)) &&
