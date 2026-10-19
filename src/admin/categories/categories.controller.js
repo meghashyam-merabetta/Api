@@ -1,9 +1,9 @@
-
+import { Op } from 'sequelize';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
 
 const Category = models.category;
-const Product = models.product;
+const ProductCategory = models.productCategory;
 
 function getCategoryId(req) {
   return req.validatedParams.categoryId;
@@ -19,27 +19,31 @@ async function findCategory(categoryId) {
   return category;
 }
 
-async function validateParent(parentCategoryId, currentCategoryId = null) {
-  if (parentCategoryId == null) return;
+async function validateParent(parentId, currentId = null) {
+  if (parentId === null || parentId === undefined) {
+    return;
+  }
 
-  if (currentCategoryId != null && parentCategoryId === currentCategoryId) {
+  if (
+    currentId !== null &&
+    currentId !== undefined &&
+    String(parentId) === String(currentId)
+  ) {
     throw new HttpError(400, 'A category cannot be its own parent');
   }
 
-  const parent = await Category.findByPk(parentCategoryId);
+  let ancestor = await Category.findByPk(parentId);
 
-  if (!parent) {
+  if (!ancestor) {
     throw new HttpError(400, 'Parent category not found');
   }
 
-  // Prevent indirect cycles, e.g. A -> B -> C -> A.
-  let ancestor = parent;
   const visited = new Set();
 
   while (ancestor) {
-    const id = ancestor.category_id;
+    const id = String(ancestor.category_id);
 
-    if (id === currentCategoryId) {
+    if (id === String(currentId)) {
       throw new HttpError(400, 'Category hierarchy cannot contain a cycle');
     }
 
@@ -49,7 +53,12 @@ async function validateParent(parentCategoryId, currentCategoryId = null) {
 
     visited.add(id);
 
-    if (ancestor.parent_category_id == null) break;
+    if (
+      ancestor.parent_category_id === null ||
+      ancestor.parent_category_id === undefined
+    ) {
+      break;
+    }
 
     ancestor = await Category.findByPk(ancestor.parent_category_id);
 
@@ -64,6 +73,8 @@ export async function listCategories(req, res) {
     limit = 20,
     offset = 0,
     parent_category_id,
+    search,
+    is_active,
   } = req.validatedQuery;
 
   const where = {};
@@ -72,11 +83,22 @@ export async function listCategories(req, res) {
     where.parent_category_id = parent_category_id;
   }
 
+  if (search) {
+    where.category_name = { [Op.iLike]: `%${search}%` };
+  }
+
+  if (is_active !== undefined) {
+    where.is_active = is_active === 'true';
+  }
+
   const { rows, count } = await Category.findAndCountAll({
     where,
     limit,
     offset,
-    order: [['category_id', 'ASC']],
+    order: [
+      ['sort_order', 'ASC'],
+      ['category_id', 'ASC'],
+    ],
   });
 
   res.json({
@@ -103,9 +125,12 @@ export async function createCategory(req, res) {
 
   const category = await Category.create({
     category_name: data.category_name,
+    slug: data.slug,
     category_image: data.category_image ?? null,
     parent_category_id: data.parent_category_id ?? null,
     description: data.description ?? null,
+    sort_order: data.sort_order ?? 0,
+    is_active: data.is_active ?? true,
   });
 
   res.status(201).json({ data: category });
@@ -114,7 +139,6 @@ export async function createCategory(req, res) {
 export async function updateCategory(req, res) {
   const categoryId = getCategoryId(req);
   const data = req.validated;
-
   const category = await findCategory(categoryId);
 
   if (data.parent_category_id !== undefined) {
@@ -123,9 +147,12 @@ export async function updateCategory(req, res) {
 
   const fields = [
     'category_name',
+    'slug',
     'category_image',
     'parent_category_id',
     'description',
+    'sort_order',
+    'is_active',
   ];
 
   for (const field of fields) {
@@ -144,8 +171,12 @@ export async function deleteCategory(req, res) {
   const category = await findCategory(categoryId);
 
   const [productCount, childCount] = await Promise.all([
-    Product.count({ where: { category_id: categoryId } }),
-    Category.count({ where: { parent_category_id: categoryId } }),
+    ProductCategory.count({
+      where: { category_id: categoryId },
+    }),
+    Category.count({
+      where: { parent_category_id: categoryId },
+    }),
   ]);
 
   if (productCount > 0) {

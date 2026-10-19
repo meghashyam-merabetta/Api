@@ -39,16 +39,25 @@ app.use(
 );
 app.use(logRequestPayload);
 app.use(helmet());
+
 app.use(
-  cors((req, callback) =>
+  cors((req, callback) => {
+    const allowAll = env.ALLOWED_ORIGINS.includes('*');
+    const trusted = isTrustedOrigin(req.get('origin'), req.path);
+
     callback(null, {
-      origin: isTrustedOrigin(req.get('origin'), req.path),
-      credentials: true,
+      origin: allowAll ? '*' : trusted,
+      credentials: !allowAll,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Client'],
-    }),
-  ),
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-App-Client',
+      ],
+    });
+  }),
 );
+
 app.get('/health/live', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/app/version-policy', (_req, res) => {
   const policy = (minimumBuild, storeUrl, host) => {

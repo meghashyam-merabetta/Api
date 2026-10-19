@@ -22,13 +22,22 @@ const expoPorts = new Set([
   '19006',
 ]);
 
+
 export function isTrustedOrigin(origin, path = '') {
   if (!origin || origin === 'null') return false;
+
+  // Explicit wildcard in ALLOWED_ORIGINS allows all browser origins.
+  if (env.ALLOWED_ORIGINS.includes('*')) return true;
+
   if (env.ALLOWED_ORIGINS.includes(origin)) return true;
-  if (env.NODE_ENV !== 'development' || !path.startsWith('/api/app/')) return false;
+
+  if (env.NODE_ENV !== 'development' || !path.startsWith('/api/app/')) {
+    return false;
+  }
 
   try {
     const url = new URL(origin);
+
     return (
       url.origin === origin &&
       url.protocol === 'http:' &&

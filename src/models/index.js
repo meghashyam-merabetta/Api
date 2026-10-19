@@ -16,7 +16,7 @@ import { Lab } from './lab.model.js';
 import { AdminProfile } from './admin.model.js';
 import { Product } from './product.model.js';
 import { Category } from './category.model.js';
-
+import { ProductCategory } from './product-category.model.js';
 export const models = {
   lab: Lab,
   user: User,
@@ -33,16 +33,21 @@ export const models = {
   adminProfile: AdminProfile,
   product: Product, 
   category: Category,
+  productCategory: ProductCategory,
 };
 
-Category.hasMany(Product, {
-  foreignKey: 'category_id',
-  as: 'products',
+Product.belongsToMany(Category, {
+  through: ProductCategory,
+  foreignKey: 'product_id',
+  otherKey: 'category_id',
+  as: 'categories',
 });
 
-Product.belongsTo(Category, {
+Category.belongsToMany(Product, {
+  through: ProductCategory,
   foreignKey: 'category_id',
-  as: 'category',
+  otherKey: 'product_id',
+  as: 'products',
 });
 
 Category.belongsTo(Category, {

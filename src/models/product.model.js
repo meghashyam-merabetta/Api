@@ -6,42 +6,40 @@ export const Product = sequelize.define(
   'Product',
   {
     product_id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.BIGINT,
+      field: 'id',
       primaryKey: true,
-      allowNull: false,
       autoIncrement: true,
+      allowNull: false,
     },
-
     product_name: {
       type: DataTypes.STRING(255),
+      field: 'name',
       allowNull: false,
-      validate: {
-        notEmpty: true,
-      },
+      validate: { notEmpty: true },
     },
-
-    prescription_required: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-
-    age_group: {
-      type: DataTypes.STRING(100),
+    brand_id: {
+      type: DataTypes.BIGINT,
       allowNull: true,
     },
-
+    slug: {
+      type: DataTypes.STRING(280),
+      allowNull: false,
+    },
     description: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
-
-    category_id: {
-      type: DataTypes.INTEGER,
+    short_description: {
+      type: DataTypes.TEXT,
       allowNull: true,
-      references: {
-        model: 'categories',
-        key: 'category_id',
+    },
+    product_status: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'draft',
+      validate: {
+        isIn: [['draft', 'active', 'inactive', 'archived']],
       },
     },
   },
@@ -49,5 +47,7 @@ export const Product = sequelize.define(
     tableName: 'products',
     timestamps: true,
     underscored: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at',
   },
 );
