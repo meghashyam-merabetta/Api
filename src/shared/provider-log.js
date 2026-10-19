@@ -1,22 +1,22 @@
 import { sequelize } from '../config/database.js';
 import { logger } from '../config/logger.js';
 
-// Persist only explicit diagnostic fields: never request bodies, query strings,
-// headers, raw provider responses, patient details or credentials.
+// Provider response text is kept in the database, never in console logs.
 export async function recordProviderCall(event) {
   try {
     await sequelize.query(
       `INSERT INTO third_party_api_logs
-      (id,provider,endpoint,method,outcome,http_status,duration_ms,provider_status,validation_fields,failure)
-      VALUES (:id,:provider,:endpoint,:method,:outcome,:httpStatus,:duration,:providerStatus,CAST(:fields AS jsonb),:failure)
+      (id,provider,endpoint,method,outcome,http_status,duration_ms,provider_status,validation_fields,failure,response_body)
+      VALUES (:id,:provider,:endpoint,:method,:outcome,:httpStatus,:duration,:providerStatus,CAST(:fields AS jsonb),:failure,:responseBody)
       ON CONFLICT(id) DO UPDATE SET outcome=EXCLUDED.outcome,
       http_status=COALESCE(EXCLUDED.http_status,third_party_api_logs.http_status),
       duration_ms=EXCLUDED.duration_ms,
       provider_status=COALESCE(EXCLUDED.provider_status,third_party_api_logs.provider_status),
       validation_fields=CASE WHEN EXCLUDED.validation_fields='[]'::jsonb THEN third_party_api_logs.validation_fields ELSE EXCLUDED.validation_fields END,
-      failure=EXCLUDED.failure,updated_at=now()`,
+      response_body=COALESCE(EXCLUDED.response_body,third_party_api_logs.response_body),failure=EXCLUDED.failure,updated_at=now()`,
       {
         replacements: {
+          responseBody: event.responseBody ?? null,
           id: event.providerRequestId,
           provider: event.provider,
           endpoint: event.endpoint.split('?')[0],

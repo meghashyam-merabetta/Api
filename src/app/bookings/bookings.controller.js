@@ -22,7 +22,11 @@ export async function listBookings(req, res) {
         return await refreshBooking(row);
       } catch {
         statusRefreshFailed = true;
-        return row.payload;
+        return {
+          ...row.payload,
+          providerBookingId: row.provider_booking_id || row.payload.providerBookingId,
+          canManageBooking: false,
+        };
       }
     }),
   );

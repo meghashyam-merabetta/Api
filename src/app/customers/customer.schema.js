@@ -33,6 +33,11 @@ export const addressSchema = z
     'Enter your house / flat number.',
   );
 
+export const savedAddressSchema = addressSchema.refine(
+  (address) => !!address.location,
+  'Select an area / locality before saving your address.',
+);
+
 export const familyMemberSchema = z
   .object({
     name: z.string().trim().min(2).max(200),
@@ -43,7 +48,7 @@ export const familyMemberSchema = z
         (value) => ageFromBirthdate(value) !== null,
         'Enter a valid birthdate (age 0 to 120 years, not in the future)',
       ),
-    gender: z.enum(['Female', 'Male', 'Other', 'Prefer not to say']),
+    gender: z.enum(['Male', 'Female']),
     phone: z
       .union([customerPhone, z.literal('')])
       .optional()
@@ -73,7 +78,7 @@ export const updateProfileSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .refine(isValidBirthDate, 'Invalid date of birth'),
-    gender: z.enum(['Female', 'Male', 'Other', 'Prefer not to say']),
-    address: addressSchema.optional(),
+    gender: z.enum(['Male', 'Female']),
+    address: savedAddressSchema.optional(),
   })
   .strict();

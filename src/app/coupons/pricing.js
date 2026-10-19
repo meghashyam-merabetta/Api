@@ -3,7 +3,7 @@ export function couponDiscount(subtotal, coupon) {
   return Math.min(
     subtotal,
     Number(coupon.max_discount_paise),
-    Math.round((subtotal * Number(coupon.percent)) / 100),
+    Math.ceil((subtotal * Number(coupon.percent)) / 10000) * 100,
   );
 }
 export function labPricing(subtotal, coupon) {

@@ -10,8 +10,15 @@ test('status sync matches the provider ID and cancellation uses owned booking an
   env.REDCLIFFE_BASE_URL='https://provider.example';env.REDCLIFFE_API_KEY='test';
   sequelize.query=async(sql,options)=> sql.startsWith('SELECT') ? [row] : sql.includes('RETURNING payload') ? [{payload:JSON.parse(options.replacements.payload)}] : [{id:'local'}];
   global.fetch=async(url,_options)=>{assert.equal(url.searchParams.get('booking_id'),'123');return Response.json({status:'Success',data:[{booking_id:999,booking_status:{value:'Wrong'}},{booking_id:123,booking_status:{value:'Phlebo Assigned'}}]});};
-  assert.equal((await refreshBooking(row)).status,'Phlebo Assigned');
-  global.fetch=async(url,options)=>{assert.deepEqual(JSON.parse(options.body),{booking_id:123,booking_status:'cancelled',remark:'Unavailable'});return Response.json({status:'success',booking_id:123,booking_status:'cancelled'});};
+  const assigned = await refreshBooking(row);
+  assert.equal(assigned.status,'Phlebo Assigned');
+  assert.equal(assigned.providerBookingId,'123');
+  assert.equal(assigned.canManageBooking,false);
+  await assert.rejects(cancelBooking({credential:{id:'customer'},validatedParams:{id:'local'},validated:{reason:'Unavailable'}},{}), /before a collection agent/);
+  global.fetch=async()=>Response.json({status:"success",data:[{booking_id:123,booking_status:'Confirmed',phlebo:{id:7}}]});
+  assert.equal((await refreshBooking(row)).canManageBooking,false);
+  await assert.rejects(cancelBooking({credential:{id:'customer'},validatedParams:{id:'local'},validated:{reason:'Unavailable'}},{}), /before a collection agent/);
+  global.fetch=async(url,options)=>{if(options.method==='GET')return Response.json({status:"success",data:[{booking_id:123,booking_status:'Confirmed',phlebo:null}]});assert.deepEqual(JSON.parse(options.body),{booking_id:123,booking_status:'cancelled',remark:'Unavailable'});return Response.json({status:'success',booking_id:123,booking_status:'cancelled'});};
   let result;
   await cancelBooking({credential:{id:'customer'},validatedParams:{id:'local'},validated:{reason:'Unavailable'}},{json:data=>{result=data;}});
   assert.equal(result.status,'Cancelled');

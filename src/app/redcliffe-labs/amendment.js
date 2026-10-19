@@ -11,13 +11,8 @@ import {
   findProviderBooking,
 } from './client.js';
 
-export function editableBooking(remote) {
-  return ['order booked', 'confirmed', 'booking confirmed'].includes(
-    String(remote?.booking_status?.value || remote?.booking_status || '')
-      .trim()
-      .toLowerCase(),
-  );
-}
+import { editableBooking } from './eligibility.js';
+export { editableBooking } from './eligibility.js';
 export async function amendBooking(req, res) {
   const b = req.validated;
   const fingerprint = createHash('sha256').update(JSON.stringify(b)).digest('hex');
