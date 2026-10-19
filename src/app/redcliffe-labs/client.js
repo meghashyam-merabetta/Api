@@ -74,7 +74,13 @@ export async function providerRequest(
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await response.json().catch(() => null);
+    const responseBody = await response.text();
+    let data = null;
+    try {
+      data = JSON.parse(responseBody);
+    } catch {
+      /* Preserve non-JSON responses too. */
+    }
     const responseStatus =
       typeof data?.status === 'string' && /^[a-zA-Z _-]{1,40}$/.test(data.status)
         ? data.status
@@ -85,6 +91,7 @@ export async function providerRequest(
         : [];
     await recordProviderCall({
       ...context,
+      responseBody,
       httpStatus: response.status,
       durationMs: Date.now() - started,
       providerStatus: responseStatus,

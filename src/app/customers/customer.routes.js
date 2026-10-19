@@ -1,8 +1,12 @@
-﻿import * as schema from './customer.schema.js';
+import { emailVerificationRoutes } from './email-verification.js';
+import { phoneVerificationRoutes } from './phone-verification.js';
+import * as schema from './customer.schema.js';
 import * as controller from './customer.controller.js';
 
 // Authentication is mandatory unless a route explicitly sets auth: false.
 export const customerRoutes = [
+  ...emailVerificationRoutes,
+  ...phoneVerificationRoutes,
   { method: 'get', path: '/me', auth: true, handler: controller.getProfile },
   {
     method: 'put',
@@ -17,7 +21,7 @@ export const customerRoutes = [
     method: 'post',
     path: '/me/addresses',
     auth: true,
-    schema: schema.addressSchema,
+    schema: schema.savedAddressSchema,
     handler: controller.addAddress,
   },
   {
@@ -25,7 +29,7 @@ export const customerRoutes = [
     path: '/me/addresses/:id',
     auth: true,
     params: schema.recordIdSchema,
-    schema: schema.addressSchema,
+    schema: schema.savedAddressSchema,
     handler: controller.updateAddress,
   },
   {

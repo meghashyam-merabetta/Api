@@ -57,9 +57,16 @@ export async function gatewayRequest(path, customerId, body) {
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await r.json().catch(() => null);
+    const responseBody = await r.text();
+    let data = null;
+    try {
+      data = JSON.parse(responseBody);
+    } catch {
+      /* Keep the original response for diagnostics. */
+    }
     await recordProviderCall({
       ...log,
+      responseBody,
       httpStatus: r.status,
       durationMs: Date.now() - start,
       providerStatus:

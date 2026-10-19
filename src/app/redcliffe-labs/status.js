@@ -3,6 +3,7 @@ import { sequelize } from '../../config/database.js';
 import { logger } from '../../config/logger.js';
 import { HttpError } from '../../shared/errors.js';
 import { reportsFromBooking } from './reports.js';
+import { editableBooking } from './eligibility.js';
 import {
   paths,
   providerRequest,
@@ -21,7 +22,11 @@ export async function refreshBooking(row) {
     ) &&
       !interruptedCancellation)
   )
-    return row.payload;
+    return {
+      ...row.payload,
+      providerBookingId: row.provider_booking_id || row.payload.providerBookingId,
+      canManageBooking: false,
+    };
   const body = await providerRequest(paths.booking, {
     query: { booking_id: String(row.provider_booking_id) },
   });
@@ -32,6 +37,10 @@ export async function refreshBooking(row) {
   const cancelled = /^(cancelled|canceled)$/i.test(status.trim());
   const payload = {
     ...row.payload,
+    providerBookingId: String(row.provider_booking_id),
+    canManageBooking:
+      editableBooking(remote) &&
+      ['confirmed', 'confirmation_unknown'].includes(row.integration_status),
     status: cancelled ? 'Cancelled' : status.trim(),
     statusSyncedAt: new Date().toISOString(),
     reports: reportsFromBooking(remote),
@@ -58,7 +67,13 @@ export async function refreshBooking(row) {
       { bookingId: row.id, previousStatus: row.payload.status, status: payload.status },
       'Lab booking status updated',
     );
-  return updated[0]?.payload || row.payload;
+  return (
+    updated[0]?.payload || {
+      ...row.payload,
+      providerBookingId: String(row.provider_booking_id),
+      canManageBooking: false,
+    }
+  );
 }
 
 export async function cancelBooking(req, res) {
@@ -74,6 +89,14 @@ export async function cancelBooking(req, res) {
     throw new HttpError(
       409,
       'Booking cannot be cancelled now. Refresh My Orders to check its status.',
+    );
+  const latest = await providerRequest(paths.booking, {
+    query: { booking_id: String(row.provider_booking_id) },
+  });
+  if (!editableBooking(findProviderBooking(latest, row.provider_booking_id)))
+    throw new HttpError(
+      409,
+      'Cancellation is available only before a collection agent is assigned.',
     );
   const claimed = await sequelize.query(
     "UPDATE lab_bookings SET integration_status='cancelling',updated_at=now() WHERE id=:id AND customer_id=:customer AND integration_status='confirmed' RETURNING id",
@@ -101,7 +124,12 @@ export async function cancelBooking(req, res) {
     String(body.booking_id) === String(row.provider_booking_id) &&
     body.booking_status === 'cancelled';
   const payload = success
-    ? { ...row.payload, status: 'Cancelled', statusSyncedAt: new Date().toISOString() }
+    ? {
+        ...row.payload,
+        canManageBooking: false,
+        status: 'Cancelled',
+        statusSyncedAt: new Date().toISOString(),
+      }
     : row.payload;
   await sequelize.query(
     'UPDATE lab_bookings SET integration_status=:state,payload=CAST(:payload AS jsonb),updated_at=now() WHERE id=:id',

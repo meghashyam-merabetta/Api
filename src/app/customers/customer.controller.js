@@ -3,6 +3,8 @@ import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
 import { clearCustomerCookie } from '../../shared/customer-session.js';
 import { ageFromBirthdate } from '../../shared/birthdate.js';
+import { lockOtpContact } from '../../shared/customer-otp.js';
+import { Op } from 'sequelize';
 
 // Derive both columns from the validated pin to keep one source of truth.
 function addressFields(address) {
@@ -24,6 +26,24 @@ export async function updateProfile(req, res) {
   const { address, ...profile } = req.validated;
 
   await sequelize.transaction(async (transaction) => {
+    await lockOtpContact('email', profile.email, transaction);
+    const emailOwner = await models.customer.findOne({
+      where: { email: profile.email, id: { [Op.ne]: customerId } },
+      transaction,
+    });
+    const emailIdentity = await models.customerIdentity.findOne({
+      where: {
+        method: 'email',
+        contact: profile.email,
+        customerId: { [Op.ne]: customerId },
+      },
+      transaction,
+    });
+    if (emailOwner || emailIdentity)
+      throw new HttpError(
+        409,
+        'This email is already used by another account. Use your existing account.',
+      );
     const customer = await models.customer.findByPk(customerId, {
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -37,6 +57,20 @@ export async function updateProfile(req, res) {
     const changedVerifiedContact = identities.some(
       (identity) => profile[identity.method] !== identity.contact,
     );
+    if (
+      !identities.some(
+        (identity) => identity.method === 'email' && identity.contact === profile.email,
+      )
+    ) {
+      throw new HttpError(422, 'Verify your email before saving your profile.');
+    }
+    if (
+      !identities.some(
+        (identity) => identity.method === 'phone' && identity.contact === profile.phone,
+      )
+    ) {
+      throw new HttpError(422, 'Verify your mobile number before saving your profile.');
+    }
     if (changedVerifiedContact) {
       throw new HttpError(422, 'Verified login contact cannot be changed here');
     }
@@ -146,7 +180,8 @@ export async function deleteAccount(req, res) {
   await sequelize.transaction(async (transaction) => {
     for (const table of ['customer_cart_items', 'customer_wishlist_items']) {
       await sequelize.query(`DELETE FROM ${table} WHERE customer_id=:customerId`, {
-        replacements: { customerId }, transaction,
+        replacements: { customerId },
+        transaction,
       });
     }
     for (const Model of [
@@ -211,7 +246,10 @@ export async function getCustomerAccount(customerId, transaction) {
       email: customer.email || '',
       dateOfBirth: customer.dateOfBirth,
       gender: customer.gender,
-      profileCompleted: customer.profileCompleted,
+      profileCompleted:
+        customer.profileCompleted &&
+        identities.some((i) => i.method === 'phone') &&
+        identities.some((i) => i.method === 'email'),
     },
     identities,
     addresses,

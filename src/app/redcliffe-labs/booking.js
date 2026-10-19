@@ -1,3 +1,4 @@
+import { formatAddress } from '../../shared/address.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
@@ -46,7 +47,7 @@ export function bookingPayload(
     !Number.isFinite(address.location.latitude) ||
     !Number.isFinite(address.location.longitude)
   )
-    throw new HttpError(422, 'Select an address with a map location.');
+    throw new HttpError(422, 'Select an area / locality for this address.');
   if (!address.landmark?.trim())
     throw new HttpError(
       422,
@@ -190,15 +191,8 @@ export async function createBooking(req, res) {
     couponCode: coupon?.code || null,
     coupon,
     items,
-    address: [
-      outgoing.customer_address,
-      b.address.landmark,
-      b.address.city,
-      b.address.state,
-      b.address.postalCode,
-    ]
-      .filter(Boolean)
-      .join(', '),
+    address: formatAddress(b.address),
+    addressSnapshot: structuredClone(b.address),
     deliveryNotes: b.notes,
     collectionDate: b.collectionDate,
     slotId: b.slotId,

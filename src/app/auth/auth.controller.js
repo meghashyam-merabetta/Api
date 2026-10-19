@@ -74,6 +74,15 @@ export async function requestOtp(req, res) {
       },
       { transaction },
     );
+    if (req.phoneVerificationCustomerId) {
+      await sequelize.query(
+        'INSERT INTO customer_phone_verifications(challenge_id,customer_id) VALUES(:id,:customerId)',
+        {
+          replacements: { id, customerId: req.phoneVerificationCustomerId },
+          transaction,
+        },
+      );
+    }
   });
 
   if (sms || email) {
@@ -113,6 +122,11 @@ export async function verifyOtp(req, res) {
       transaction,
     });
     if (!pending) return null;
+    const [phoneBindings] = await sequelize.query(
+      'SELECT 1 FROM customer_phone_verifications WHERE challenge_id=:id',
+      { replacements: { id: challengeId }, transaction },
+    );
+    if (phoneBindings.length) return null;
 
     // Use the same lock order as resend to avoid deadlocks.
     await lockOtpContact(pending.method, pending.contact, transaction);

@@ -24,7 +24,7 @@ test('patient details, customer reference and phone fallback follow the booking 
   const withPhone = bookingPayload(customer, { ...member, phone: '9123456789' }, address, ['PKG1'], '2026-10-08', '27', 'local-id');
   assert.equal(withPhone.customer_phonenumber, '9123456789');
   assert.equal(withPhone.customer_altphonenumber, customer.phone);
-  assert.throws(() => bookingPayload(customer, member, { ...address, location: null }, [], '', '', ''), /map location/);
+  assert.throws(() => bookingPayload(customer, member, { ...address, location: null }, [], '', '', ''), /area \/ locality/);
   assert.throws(() => bookingPayload(customer, { ...member, gender: 'Other' }, address, [], '', '', ''), /supports bookings/);
 });
 test('five India dates, serviceability and slot capacity are authoritative', () => {

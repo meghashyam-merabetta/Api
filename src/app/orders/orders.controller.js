@@ -1,3 +1,4 @@
+import { formatAddress } from '../../shared/address.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
@@ -141,15 +142,8 @@ export async function createOrder(req, res) {
       coupon,
       delivery: delivery / 100,
       items,
-      address: [
-        b.address.line1,
-        b.address.line2,
-        b.address.city,
-        b.address.state,
-        b.address.postalCode,
-      ]
-        .filter(Boolean)
-        .join(', '),
+      address: formatAddress(b.address),
+      addressSnapshot: structuredClone(b.address),
       deliveryNotes: b.notes,
       orderedBy: {
         name:

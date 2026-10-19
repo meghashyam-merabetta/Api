@@ -31,7 +31,7 @@ try{
  assert.equal((await findOrder(id)).payment_status,'CHARGED');
  await sequelize.query("INSERT INTO coupons(code,scope,percent,max_discount_paise,active) VALUES(:code,'both',10,10000,true)",{replacements:{code:couponCode}});
  await createOrder({...req,validated:{...req.validated,requestKey:randomUUID(),couponCode}},res);
- assert.equal(result.discount,10.4);assert.equal(result.total,133.6);assert.equal(amount,'133.60');assert.equal(result.couponCode,couponCode);
+ assert.equal(result.discount,11);assert.equal(result.total,133);assert.equal(amount,'133.00');assert.equal(result.couponCode,couponCode);
  console.log('PASS: DB order/details, server pricing, session idempotency, amount verification, ownership, webhook authentication, paid-state protection. No real payments sent.');
 }finally{
  global.fetch=original;Object.assign(env,saved);

@@ -33,6 +33,9 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/015-stpl-otp.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/016-cart-wishlist.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/018-contact-coupons.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/019-provider-response-body.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/020-email-verification.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/021-phone-verification.sql', import.meta.url), 'utf8'));
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
 } finally { await sequelize.close(); }
