@@ -1,4 +1,5 @@
 import { contactRoutes } from '../app/contact/routes.js';
+import { bannerRoutes } from '../app/banners/routes.js';
 import { couponRoutes } from '../app/coupons/routes.js';
 import { bookingRoutes } from '../app/bookings/bookings.routes.js';
 import { orderRoutes } from '../app/orders/orders.routes.js';
@@ -23,6 +24,7 @@ import { labRoutes } from '../app/labs/lab.routes.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
+  { path: '/app', realm: 'app', routes: bannerRoutes },
   { path: '/app', realm: 'app', routes: contactRoutes },
   { path: '/app', realm: 'app', routes: couponRoutes },
   { path: '/app', realm: 'app', routes: orderRoutes },
