@@ -2,6 +2,17 @@ import { Op } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
+import {
+  productImageUpload,
+  s3,
+} from './product_image.js';
+
+import {
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
+
+import { randomUUID } from 'node:crypto';
 
 const Product = models.product;
 const Category = models.category;
@@ -264,6 +275,206 @@ export async function deleteProduct(req, res) {
   const product = await findProduct(req.validatedParams.productId);
 
   await product.destroy();
+
+  res.status(204).end();
+}
+
+
+const S3_BUCKET = 'prod-merabetta';
+const S3_REGION = 'ap-south-1';
+
+export function uploadImagesProduct(req, res, next) {
+  productImageUpload(req, res, async (error) => {
+    if (error) {
+      return next(error);
+    }
+
+    try {
+      const product = await findProduct(
+        req.validatedParams.productId,
+      );
+
+      const files = req.files ?? [];
+
+      if (files.length === 0) {
+        return res.status(400).json({
+          message: 'Upload at least one image using uploadimage',
+        });
+      }
+
+      const existingCount = await models.productImage.count({
+        where: { product_id: product.product_id },
+      });
+
+      if (existingCount + files.length > 6) {
+        return res.status(400).json({
+          message: 'A product can have a maximum of 6 images',
+        });
+      }
+
+      const uploaded = [];
+
+      try {
+        for (const [index, file] of files.entries()) {
+          const extensionByMimeType = {
+            'image/jpeg': 'jpg',
+            'image/png': 'png',
+            'image/webp': 'webp',
+          };
+
+          const extension = extensionByMimeType[file.mimetype];
+
+          if (!extension) {
+            throw new HttpError(400, 'Unsupported image type');
+          }
+
+          const s3Key =
+            `upload/${product.product_id}/${randomUUID()}.${extension}`;
+
+          await s3.send(
+            new PutObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: s3Key,
+              Body: file.buffer,
+              ContentType: file.mimetype,
+            }),
+          );
+
+          const imageUrl =
+            `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Key}`;
+
+          uploaded.push({
+            product_id: product.product_id,
+            image_url: imageUrl,
+            s3_key: s3Key,
+            alt_text: null,
+            sort_order: existingCount + index,
+            is_primary: existingCount === 0 && index === 0,
+          });
+        }
+
+        const saved = await sequelize.transaction(async (transaction) => {
+          return models.productImage.bulkCreate(uploaded, {
+            transaction,
+          });
+        });
+
+        return res.status(201).json({
+          data: saved,
+        });
+      } catch (uploadError) {
+        await Promise.allSettled(
+          uploaded.map((image) =>
+            s3.send(
+              new DeleteObjectCommand({
+                Bucket: S3_BUCKET,
+                Key: image.s3_key,
+              }),
+            ),
+          ),
+        );
+
+        throw uploadError;
+      }
+    } catch (uploadError) {
+      return next(uploadError);
+    }
+  });
+}
+
+
+export async function listProductImages(req, res) {
+  const product = await findProduct(req.validatedParams.productId);
+
+  const images = await models.productImage.findAll({
+    where: { product_id: product.product_id },
+    order: [
+      ['is_primary', 'DESC'],
+      ['sort_order', 'ASC'],
+      ['id', 'ASC'],
+    ],
+  });
+
+  res.json({ data: images });
+}
+
+export async function setPrimaryProductImage(req, res) {
+  const { productId, imageId } = req.validatedParams;
+  const product = await findProduct(productId);
+
+  const image = await models.productImage.findOne({
+    where: {
+      id: imageId,
+      product_id: product.product_id,
+    },
+  });
+
+  if (!image) {
+    throw new HttpError(404, 'Product image not found');
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    // Clear the existing primary before setting the new one.
+    await models.productImage.update(
+      { is_primary: false },
+      {
+        where: { product_id: product.product_id },
+        transaction,
+      },
+    );
+
+    await image.update(
+      { is_primary: true },
+      { transaction },
+    );
+  });
+
+  res.json({ data: { ...image.toJSON(), is_primary: true } });
+}
+
+export async function deleteProductImage(req, res) {
+  const { productId, imageId } = req.validatedParams;
+  const product = await findProduct(productId);
+
+  const image = await models.productImage.findOne({
+    where: {
+      id: imageId,
+      product_id: product.product_id,
+    },
+  });
+
+  if (!image) {
+    throw new HttpError(404, 'Product image not found');
+  }
+
+  const wasPrimary = image.is_primary;
+
+  // Remove the database row first, then remove the S3 object.
+  await sequelize.transaction(async (transaction) => {
+    await image.destroy({ transaction });
+
+    if (wasPrimary) {
+      const nextImage = await models.productImage.findOne({
+        where: { product_id: product.product_id },
+        order: [['sort_order', 'ASC'], ['id', 'ASC']],
+        transaction,
+      });
+
+      if (nextImage) {
+        await nextImage.update(
+          { is_primary: true },
+          { transaction },
+        );
+      }
+    }
+  });
+
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: image.s3_key,
+    }),
+  );
 
   res.status(204).end();
 }

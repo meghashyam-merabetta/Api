@@ -1,17 +1,28 @@
+
 import {
   listProducts,
   getProduct,
   createProduct,
   updateProduct,
   deleteProduct,
+  uploadImagesProduct,
+  listProductImages,
+  setPrimaryProductImage,
+  deleteProductImage,
 } from './products.controller.js';
+
 
 import {
   listQuerySchema,
   productIdParamsSchema,
+  productImageParamsSchema,
   createProductSchema,
   updateProductSchema,
 } from './products.schema.js';
+
+
+
+
 
 export const productsRoutes = [
   {
@@ -50,4 +61,46 @@ export const productsRoutes = [
     auth: true,
     handler: deleteProduct,
   },
+  {
+    method: 'post',
+    path: '/:productId/images',
+    params: productIdParamsSchema,
+    auth: true,
+    handler: uploadImagesProduct,
+  },
+  {
+    method: 'get',
+    path: '/:productId/images',
+    params: productIdParamsSchema,
+    auth: true,
+    handler: listProductImages,
+  },
+  {
+    method: 'patch',
+    path: '/:productId/images/:imageId/primary',
+    params: productIdParamsSchema,
+    auth: true,
+    handler: setPrimaryProductImage,
+  },
+  {
+    method: 'delete',
+    path: '/:productId/images/:imageId',
+    params: productIdParamsSchema,
+    auth: true,
+    handler: deleteProductImage,
+  },
+  {
+  method: 'patch',
+  path: '/:productId/images/:imageId/primary',
+  params: productImageParamsSchema,
+  auth: true,
+  handler: setPrimaryProductImage,
+},
+{
+  method: 'delete',
+  path: '/:productId/images/:imageId',
+  params: productImageParamsSchema,
+  auth: true,
+  handler: deleteProductImage,
+},
 ];

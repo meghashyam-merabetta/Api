@@ -19,6 +19,9 @@
     "format:check": "prettier --check \"src/**/*.js\""
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1154.0",
+    "@aws-sdk/s3-request-presigner": "^3.1154.0",
+    "aws-cli-js": "^2.2.3",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -27,6 +30,7 @@
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.4.0",
     "nodemailer": "^10.1.1",
     "pg": "^8.16.3",
     "pg-hstore": "^2.3.4",

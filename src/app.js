@@ -134,3 +134,4 @@ app.use((err, req, res, next) => {
         : err.message,
   });
 });
+app.use('/api', apiRoutes);

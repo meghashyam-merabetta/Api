@@ -66,3 +66,8 @@ export const updateProductSchema = z.object({
       path: ['primary_category_id'],
     },
   );
+
+  export const productImageParamsSchema = z.object({
+  productId: z.coerce.number().int().positive(),
+  imageId: z.coerce.number().int().positive(),
+}).strict();

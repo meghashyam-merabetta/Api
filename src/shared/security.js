@@ -30,6 +30,15 @@ export function csrfGuard(req, res, next) {
       throw new HttpError(415, 'Content-Type must be application/json');
     return next();
   }
+
+    // Product image uploads use multipart/form-data, not JSON.
+  // Keep the trusted-origin check above the normal content-type validation.
+  if (
+    req.method === 'POST' &&
+    /^\/api\/admin\/products\/[^/]+\/images$/.test(req.path)
+  ) {
+    return next();
+  }
   // Required even for login/register to prevent login CSRF. CLI clients must send Origin too.
   if (!isTrustedOrigin(req.get('origin'), req.path)) {
     req.log?.warn(

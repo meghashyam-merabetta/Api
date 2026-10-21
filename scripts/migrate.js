@@ -39,4 +39,7 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'));
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
+  await sequelize.query(
+  readFileSync(new URL('../sql/022-product-images.sql', import.meta.url), 'utf8'),
+);
 } finally { await sequelize.close(); }

@@ -1,6 +1,8 @@
 export { User } from './user.model.js';
 export { Session } from './session.model.js';
 
+import { ProductImage } from './product-image.model.js';
+
 import { User } from './user.model.js';
 import { Session } from './session.model.js';
 import {
@@ -34,6 +36,7 @@ export const models = {
   product: Product, 
   category: Category,
   productCategory: ProductCategory,
+  productImage: ProductImage,
 };
 
 Product.belongsToMany(Category, {
@@ -58,4 +61,15 @@ Category.belongsTo(Category, {
 Category.hasMany(Category, {
   foreignKey: 'parent_category_id',
   as: 'subcategories',
+});
+
+Product.hasMany(ProductImage, {
+  foreignKey: 'product_id',
+  as: 'images',
+  onDelete: 'CASCADE',
+});
+
+ProductImage.belongsTo(Product, {
+  foreignKey: 'product_id',
+  as: 'product',
 });
