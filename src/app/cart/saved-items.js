@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
+import { productCatalog, sellableProduct } from '../products/catalog.js';
 
 export function savedItemRoutes(kind) {
   const cart = kind === 'cart';
@@ -39,16 +40,18 @@ export function savedItemRoutes(kind) {
             replacements: { key: `${kind}:${req.credential.id}` },
             transaction,
           });
-          const products = await sequelize.query(
-            id.startsWith('redcliffe:')
-              ? "SELECT id FROM lab_packages WHERE id=:id AND active AND lab_id='redcliffe'"
-              : 'SELECT id FROM product_catalog WHERE id=:id AND active',
-            {
-              replacements: { id },
-              type: QueryTypes.SELECT,
-              transaction,
-            },
-          );
+          const products = id.startsWith('redcliffe:')
+            ? await sequelize.query(
+                "SELECT id FROM lab_packages WHERE id=:id AND active AND lab_id='redcliffe'",
+                {
+                  replacements: { id },
+                  type: QueryTypes.SELECT,
+                  transaction,
+                },
+              )
+            : cart
+              ? [await sellableProduct(id, quantity, transaction)]
+              : (await productCatalog(transaction)).products.filter((p) => p.id === id);
           if (!products.length) throw new HttpError(422, 'Item is no longer available');
           const [count] = await sequelize.query(
             `SELECT count(*)::int AS total FROM ${table} WHERE customer_id=:customer AND item_id<>:id`,

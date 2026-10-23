@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { rateLimit } from 'express-rate-limit';
 import { sequelize } from '../../config/database.js';
+import { deliverContactNotification } from './notifications.js';
+import { logger } from '../../config/logger.js';
 export const contactSchema = z
   .object({
     name: z.string().trim().min(2).max(120),
@@ -43,6 +45,9 @@ export const contactRoutes = [
           confirmation:
             'Your enquiry has been received. Our support team will contact you.',
         });
+      void deliverContactNotification(undefined, id).catch(() => {
+        logger.warn({ enquiryId: id }, 'Contact notification failed; enquiry remains saved');
+      });
     },
   },
 ];
