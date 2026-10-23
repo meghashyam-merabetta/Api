@@ -9,6 +9,7 @@ const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    PRODUCT_IMAGE_BASE_URL: z.string().trim().default(''),
     LOCATIONIQ_API_KEY: z.string().trim().default(''),
     REDCLIFFE_BASE_URL: z.string().trim().default(''),
     REDCLIFFE_API_KEY: z.string().trim().default(''),
@@ -49,11 +50,11 @@ const schema = z
     STPL_UNICODE: z.enum(['true', 'false']).default('false'),
     LOG_API_PAYLOADS: z
       .enum(['true', 'false'])
-      .default('true')
+      .default('false')
       .transform((v) => v === 'true'),
     LOG_SQL: z
       .enum(['true', 'false'])
-      .default('true')
+      .default('false')
       .transform((v) => v === 'true'),
     DB_HOST: z.string().trim().min(1),
     DB_PORT: z.coerce.number().int().min(1).max(65535).default(5432),

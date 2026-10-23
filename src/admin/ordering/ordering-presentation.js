@@ -25,12 +25,13 @@ export function orderingSummary({ payload = {}, ...row }) {
   const isLab = payload.kind === 'labs' || !!row.labId;
   const collectionCharges = isLab ? money(payload.collection) : 0;
   const deliveryCharges = isLab ? 0 : money(payload.delivery);
-  const charges = collectionCharges !== null && deliveryCharges !== null ? rounded(collectionCharges + deliveryCharges) : null;
+  const handlingCharges = isLab ? 0 : money(payload.handling) ?? 0;
+  const charges = collectionCharges !== null && deliveryCharges !== null ? rounded(collectionCharges + deliveryCharges + handlingCharges) : null;
   const finalAmount = money(row.total);
   return { ...row, total: finalAmount, items, itemNames: items.map(item => item.name || item.id || 'Unknown').join(' | '),
     itemCount: items.length, totalQuantity: items.every(item => item.quantity !== null) ? items.reduce((n, item) => n + item.quantity, 0) : null,
     totalMrp, offerDiscount: totalMrp !== null && subtotal !== null ? rounded(Math.max(0, totalMrp - subtotal)) : null,
     subtotal, couponCode, couponPercent: money(payload.coupon?.percent),
     couponMaxDiscount: payload.coupon?.max_discount_paise === undefined ? null : money(Number(payload.coupon.max_discount_paise) / 100),
-    couponDiscount, priceAfterCoupon, collectionCharges, deliveryCharges, charges, finalAmount };
+    couponDiscount, priceAfterCoupon, collectionCharges, deliveryCharges, handlingCharges, charges, finalAmount };
 }

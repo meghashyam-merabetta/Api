@@ -6,9 +6,9 @@ export function couponDiscount(subtotal, coupon) {
     Math.ceil((subtotal * Number(coupon.percent)) / 10000) * 100,
   );
 }
-export function labPricing(subtotal, coupon) {
+export function labPricing(subtotal, coupon, settings) {
   const discount = couponDiscount(subtotal, coupon);
-  const collection = subtotal - discount < 59900 ? 15000 : 0;
+  const collection = subtotal - discount < settings.lab_collection_below_paise ? settings.lab_collection_charge_paise : 0;
   return {
     subtotal: subtotal / 100,
     discount: discount / 100,

@@ -1,10 +1,23 @@
-// Static demo data; replace with common models when implementing persistence.
-const items = [
-  { id: 1, name: 'Keyboard', price: 1499 },
-  { id: 2, name: 'Mouse', price: 799 },
-];
-
-export function listProducts(req, res) {
-  const { limit } = req.validatedQuery;
-  res.json({ demo: true, data: items.slice(0, limit) });
+import { productCatalog } from './catalog.js';
+import { HttpError } from '../../shared/errors.js';
+export async function listProducts(req, res) {
+  const catalog = await productCatalog();
+  const { category, brand, q, limit, offset } = req.validatedQuery;
+  const items = catalog.products.filter(
+    (p) =>
+      (!category || p.categoryIds.includes(category)) &&
+      (!brand || p.brandId === brand) &&
+      (!q ||
+        (p.name + ' ' + p.subtitle + ' ' + p.brandName)
+          .toLowerCase()
+          .includes(q.toLowerCase())),
+  );
+  res.json({ data: items.slice(offset, offset + limit), total: items.length });
+}
+export async function getProduct(req, res) {
+  const product = (await productCatalog()).products.find(
+    (p) => p.id === req.validatedParams.id,
+  );
+  if (!product) throw new HttpError(404, 'Product not found');
+  res.json({ data: product });
 }
