@@ -1,3 +1,4 @@
+import { readPricingSettings, chargeBelow } from '../pricing/settings.js';
 import { formatAddress } from '../../shared/address.js';
 import { createHash } from 'node:crypto';
 import { nextOrderId } from './order-number.js';
@@ -201,8 +202,10 @@ export async function createOrder(req, res) {
     }
     const coupon = await resolveCoupon(b.couponCode, 'products', transaction);
     const discount = couponDiscount(subtotal, coupon);
-    const delivery = subtotal >= 49900 ? 0 : 4000;
-    const total = subtotal - discount + delivery;
+    const pricingSettings = await readPricingSettings(transaction);
+    const delivery = chargeBelow(subtotal, pricingSettings.product_delivery_below_paise, pricingSettings.product_delivery_charge_paise);
+    const handling = chargeBelow(subtotal, pricingSettings.product_handling_below_paise, pricingSettings.product_handling_charge_paise);
+    const total = subtotal - discount + delivery + handling;
     const id = await nextOrderId(transaction);
     const payload = {
       id,
@@ -217,6 +220,8 @@ export async function createOrder(req, res) {
       couponCode: coupon?.code || null,
       coupon,
       delivery: delivery / 100,
+      handling: handling / 100,
+      pricingSettings,
       items,
       address: formatAddress(b.address),
       addressSnapshot: structuredClone(b.address),

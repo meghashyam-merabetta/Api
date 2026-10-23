@@ -1,3 +1,4 @@
+import { readPricingSettings } from '../pricing/settings.js';
 import { formatAddress } from '../../shared/address.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
@@ -153,6 +154,7 @@ export async function createBooking(req, res) {
     items.push({ id: item.id, quantity: 1, snapshot: rows[0].catalog_data });
   }
   const coupon = await resolveCoupon(b.couponCode, 'labs');
+  const pricingSettings = await readPricingSettings();
   const pricing = labPricing(
     items.reduce((sum, item) => sum + paise(item.snapshot.price), 0),
     coupon,
@@ -188,6 +190,7 @@ export async function createBooking(req, res) {
     paymentStatus: 'Payment to Redcliffe',
     ...pricing,
     pricingVersion: 1,
+    pricingSettings,
     couponCode: coupon?.code || null,
     coupon,
     items,

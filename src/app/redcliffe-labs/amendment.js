@@ -1,3 +1,4 @@
+import { readPricingSettings } from '../pricing/settings.js';
 import { createHash } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
@@ -117,7 +118,9 @@ export async function amendBooking(req, res) {
         0,
       ) / 100;
     // Preserve the discount already granted; amendments do not redeem another coupon.
-    order.collection = order.subtotal - order.discount < 599 ? 150 : 0;
+    const settings = order.pricingSettings || await readPricingSettings();
+    order.pricingSettings = settings;
+    order.collection = Math.round((order.subtotal - order.discount) * 100) < settings.lab_collection_below_paise ? settings.lab_collection_charge_paise / 100 : 0;
     order.total =
       Math.round((order.subtotal - order.discount + order.collection) * 100) / 100;
   }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { couponDiscount, labPricing } from '../src/app/coupons/pricing.js';
+import { couponDiscount, labPricing as configuredLabPricing } from '../src/app/coupons/pricing.js';
 import { formatAddress } from '../src/shared/address.js';
 import { savedAddressSchema } from '../src/app/customers/customer.schema.js';
 import { recordProviderCall } from '../src/shared/provider-log.js';
@@ -29,3 +29,5 @@ test('provider response text is preserved verbatim in database replacements', as
   try {await recordProviderCall({providerRequestId:'id',provider:'redcliffe',endpoint:'/test',method:'GET',httpStatus:200,responseBody:raw});}
   finally {sequelize.query=original;}
 });
+
+function labPricing(subtotal, coupon) { return configuredLabPricing(subtotal, coupon, {lab_collection_below_paise:59900,lab_collection_charge_paise:15000}); }

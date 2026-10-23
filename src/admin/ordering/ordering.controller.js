@@ -61,7 +61,7 @@ export function csvCell(value) {
   if (/^[\s\u0000-\u001f]*[=+@-]/u.test(text) || /^[\t\r\n]/u.test(text)) text = "'" + text;
   return '"' + text.replaceAll('"', '""') + '"';
 }
-const columns = ['id', 'bookingNumber', 'customerId', 'customerName', 'email', 'phone', 'status', 'paymentStatus', 'paymentMethod', 'itemNames', 'itemCount', 'totalQuantity', 'items', 'totalMrp', 'offerDiscount', 'subtotal', 'couponCode', 'couponPercent', 'couponMaxDiscount', 'couponDiscount', 'priceAfterCoupon', 'collectionCharges', 'deliveryCharges', 'charges', 'finalAmount', 'total', 'labId', 'providerBookingId', 'integrationStatus', 'createdAt', 'updatedAt'];
+const columns = ['id', 'bookingNumber', 'customerId', 'customerName', 'email', 'phone', 'status', 'paymentStatus', 'paymentMethod', 'itemNames', 'itemCount', 'totalQuantity', 'items', 'totalMrp', 'offerDiscount', 'subtotal', 'couponCode', 'couponPercent', 'couponMaxDiscount', 'couponDiscount', 'priceAfterCoupon', 'collectionCharges', 'deliveryCharges', 'handlingCharges', 'charges', 'finalAmount', 'total', 'labId', 'providerBookingId', 'integrationStatus', 'createdAt', 'updatedAt'];
 
 export const listOrdering = (kind, csv = false) => async (req, res) => {
   const query = req.validatedQuery;
