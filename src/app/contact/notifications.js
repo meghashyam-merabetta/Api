@@ -6,11 +6,14 @@ import { logger } from '../../config/logger.js';
 import { smtpConfig } from '../email/client.js';
 export async function deliverContactNotification(
   createTransport = nodemailer.createTransport,
+  enquiryId = null,
 ) {
   await sequelize.transaction(async (transaction) => {
     const [row] = await sequelize.query(
-      'SELECT * FROM contact_enquiries WHERE notification_sent_at IS NULL AND notification_retry_at<=now() ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1',
-      { type: QueryTypes.SELECT, transaction },
+      'SELECT * FROM contact_enquiries WHERE notification_sent_at IS NULL AND notification_retry_at<=now()' +
+        (enquiryId ? ' AND id=:enquiryId' : '') +
+        ' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1',
+      { type: QueryTypes.SELECT, transaction, replacements: { enquiryId } },
     );
     if (!row) return;
     let transport;
@@ -26,7 +29,7 @@ export async function deliverContactNotification(
       });
       sent = !!result.accepted?.length && !result.rejected?.length;
     } catch {
-      logger.warn({ enquiryId: row.id }, 'Contact notification will be retried');
+      logger.warn({ enquiryId: row.id }, 'Contact notification failed; saved for manual retry');
     } finally {
       transport?.close();
     }
@@ -35,22 +38,4 @@ export async function deliverContactNotification(
       { replacements: { id: row.id, sent }, transaction },
     );
   });
-}
-export function startContactNotifications() {
-  let running = false;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try {
-      await deliverContactNotification();
-    } catch {
-      logger.warn('Contact notification worker unavailable');
-    } finally {
-      running = false;
-    }
-  };
-  const timer = setInterval(tick, 10000);
-  timer.unref();
-  void tick();
-  return () => clearInterval(timer);
 }
