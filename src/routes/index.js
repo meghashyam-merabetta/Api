@@ -21,9 +21,11 @@ import { categoriesRoutes as adminCategories } from '../admin/categories/categor
 import { userRoutes as adminUsers } from '../admin/users/users.routes.js';
 import { adminManagementRoutes } from '../admin/management/admin.routes.js';
 import { labRoutes } from '../app/labs/lab.routes.js';
+import { orderingRoutes } from '../admin/ordering/ordering.routes.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
+  { path: '/admin/ordering', realm: 'admin', routes: orderingRoutes },
   { path: '/app', realm: 'app', routes: bannerRoutes },
   { path: '/app', realm: 'app', routes: contactRoutes },
   { path: '/app', realm: 'app', routes: couponRoutes },

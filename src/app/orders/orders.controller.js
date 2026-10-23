@@ -1,5 +1,6 @@
 import { formatAddress } from '../../shared/address.js';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
+import { nextOrderId } from './order-number.js';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
@@ -7,6 +8,8 @@ import { env } from '../../config/env.js';
 import { gatewayRequest, paymentUrl, requireGateway } from '../hdfc/client.js';
 import { resolveCoupon } from '../coupons/routes.js';
 import { couponDiscount } from '../coupons/pricing.js';
+import { reserveStock, settleStock } from './inventory.js';
+import { sellableProduct } from '../products/catalog.js';
 export function paise(value) {
   const text = String(value);
   if (!/^\d+(\.\d{1,2})?$/.test(text)) throw new HttpError(422, 'Invalid amount');
@@ -34,49 +37,125 @@ export function verifiedStatus(row, data) {
       ? 'FAILED'
       : 'PENDING';
 }
+// Called under the checkout row lock, in the same transaction as stock settlement.
+async function promoteCheckout(id, transaction) {
+  await sequelize.query(
+    `INSERT INTO orders SELECT * FROM product_checkouts WHERE id=:id AND payment_status IN ('CHARGED','COD')
+     ON CONFLICT(id) DO UPDATE SET payment_status=EXCLUDED.payment_status,stock_state=EXCLUDED.stock_state,
+       payload=EXCLUDED.payload,payment_url=EXCLUDED.payment_url,transaction_id=EXCLUDED.transaction_id,updated_at=EXCLUDED.updated_at`,
+    { replacements: { id }, transaction },
+  );
+  const [checkout] = await sequelize.query('SELECT payload FROM product_checkouts WHERE id=:id', { replacements: { id }, type: QueryTypes.SELECT, transaction });
+  for (const item of checkout.payload.items) {
+    await sequelize.query(
+      'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot) VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb)) ON CONFLICT(order_id,product_id) DO NOTHING',
+      { replacements: { id, product: item.id, qty: item.quantity, unit: paise(item.snapshot.price), snapshot: JSON.stringify(item.snapshot) }, transaction },
+    );
+  }
+}
 export async function findOrder(id, customer) {
   const [row] = await sequelize.query(
-    'SELECT * FROM orders WHERE id=:id' + (customer ? ' AND customer_id=:customer' : ''),
+    'SELECT * FROM product_checkouts WHERE id=:id' + (customer ? ' AND customer_id=:customer' : ''),
     { replacements: { id, customer }, type: QueryTypes.SELECT },
   );
   if (!row) throw new HttpError(404, 'Order not found');
   return row;
 }
 export async function syncOrder(row) {
+  if (row.payment_status === 'COD') return row;
   if (row.payment_status === 'CHARGED') return row;
   const data = await gatewayRequest('/orders/' + row.id, row.customer_id);
-  const status = verifiedStatus(row, data);
-  const url = paymentUrl(data.payment_links?.web);
-  await sequelize.query(
-    `UPDATE orders SET payment_status=:status,transaction_id=:txn,payment_url=COALESCE(:url,payment_url),payload=jsonb_set(jsonb_set(payload,'{status}',to_jsonb(CAST(:label AS text))),'{paymentStatus}',to_jsonb(CAST(:payment AS text))),updated_at=now() WHERE id=:id AND payment_status<>'CHARGED'`,
-    {
-      replacements: {
-        id: row.id,
-        status,
-        txn: typeof data.txn_id === 'string' ? data.txn_id : null,
-        url,
-        label:
-          status === 'CHARGED'
-            ? 'Processing'
-            : status === 'FAILED'
-              ? 'Payment failed'
-              : 'Payment pending',
-        payment:
-          status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending',
-      },
-    },
-  );
+  await applyPaymentStatus(row.id, data);
+
   return findOrder(row.id, row.customer_id);
+}
+export async function applyPaymentStatus(id, data) {
+  return sequelize.transaction(async (transaction) => {
+    const [row] = await sequelize.query('SELECT * FROM product_checkouts WHERE id=:id FOR UPDATE', {
+      replacements: { id },
+      type: QueryTypes.SELECT,
+      transaction,
+    });
+    if (!row) throw new HttpError(404, 'Order not found');
+    if (row.payment_status === 'COD') return row;
+    const status = verifiedStatus(row, data);
+    if (row.payment_status === 'CHARGED') return row;
+    let stock = row.stock_state;
+    if (status === 'CHARGED') {
+      if (stock === 'released') {
+        try {
+          await reserveStock(row.id, row.payload.items, transaction);
+          stock = 'reserved';
+        } catch (error) {
+          if (error.status !== 409) throw error;
+          stock = 'review';
+        }
+      }
+      if (stock === 'reserved') {
+        await settleStock(row.id, true, transaction);
+        stock = 'deducted';
+      }
+      // Old orders predate inventory tracking: never silently deduct them twice.
+      else if (stock === 'legacy') stock = 'review';
+    } else if (status === 'FAILED' && stock === 'reserved') {
+      await settleStock(row.id, false, transaction);
+      stock = 'released';
+    }
+    // A stale pending response must not revive an already failed payment link.
+    if (row.payment_status === 'FAILED' && status === 'PENDING') return row;
+    const label =
+      status === 'CHARGED'
+        ? stock === 'review'
+          ? 'Payment received - stock review'
+          : 'Processing'
+        : status === 'FAILED'
+          ? 'Payment failed'
+          : 'Payment pending';
+    const payment =
+      status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending';
+    const payload = { ...row.payload, status: label, paymentStatus: payment };
+    const url =
+      status === 'FAILED' || status === 'CHARGED'
+        ? null
+        : paymentUrl(data.payment_links?.web) || row.payment_url;
+    await sequelize.query(
+      'UPDATE product_checkouts SET payment_status=:status,stock_state=:stock,transaction_id=:txn,payment_url=:url,payload=CAST(:payload AS jsonb),payment_checked_at=now(),updated_at=now() WHERE id=:id',
+      {
+        replacements: {
+          id,
+          status,
+          stock,
+          txn: typeof data.txn_id === 'string' ? data.txn_id : null,
+          url,
+          payload: JSON.stringify(payload),
+        },
+        transaction,
+      },
+    );
+    if (status === 'CHARGED') await promoteCheckout(id, transaction);
+    return {
+      ...row,
+      payment_status: status,
+      stock_state: stock,
+      payload,
+      payment_url: url,
+    };
+  });
 }
 export function orderView(row) {
   return {
     ...row.payload,
-    paymentUrl: row.payment_status === 'CHARGED' ? null : paymentUrl(row.payment_url),
+    orderNumber: row.order_number || row.id,
+    paymentReturnUrl: env.HDFC_RETURN_URL || null,
+    paymentUrl: ['CHARGED', 'FAILED'].includes(row.payment_status)
+      ? null
+      : paymentUrl(row.payment_url),
   };
 }
 export async function createOrder(req, res) {
-  requireGateway();
   const b = req.validated;
+  const cod = b.paymentMethod === 'cod';
+  if (!cod) requireGateway();
   const customer = req.credential;
   if (!customer.phone || !customer.email)
     throw new HttpError(
@@ -99,7 +178,7 @@ export async function createOrder(req, res) {
       transaction,
     });
     const [old] = await sequelize.query(
-      "SELECT * FROM orders WHERE customer_id=:customer AND (request_key=:key OR (fingerprint=:fingerprint AND payment_status<>'CHARGED')) ORDER BY (request_key=:key) DESC LIMIT 1",
+      "SELECT * FROM product_checkouts WHERE customer_id=:customer AND (request_key=:key OR (fingerprint=:fingerprint AND payment_status NOT IN ('CHARGED','FAILED','COD'))) ORDER BY (request_key=:key) DESC LIMIT 1",
       {
         replacements: { customer: customer.id, key: b.requestKey, fingerprint },
         type: QueryTypes.SELECT,
@@ -115,26 +194,23 @@ export async function createOrder(req, res) {
     const items = [];
     let subtotal = 0;
     for (const item of b.items) {
-      const [product] = await sequelize.query(
-        'SELECT data FROM product_catalog WHERE id=:id AND active',
-        { replacements: { id: item.id }, type: QueryTypes.SELECT, transaction },
-      );
-      if (!product) throw new HttpError(422, 'A product is no longer available.');
-      const unit = paise(product.data.price);
+      const product = await sellableProduct(item.id, item.quantity, transaction);
+      const unit = paise(product.price);
       subtotal += unit * item.quantity;
-      items.push({ ...item, snapshot: product.data });
+      items.push({ ...item, snapshot: product });
     }
     const coupon = await resolveCoupon(b.couponCode, 'products', transaction);
     const discount = couponDiscount(subtotal, coupon);
     const delivery = subtotal >= 49900 ? 0 : 4000;
     const total = subtotal - discount + delivery;
-    const id = 'MB' + randomBytes(9).toString('hex');
+    const id = await nextOrderId(transaction);
     const payload = {
       id,
       kind: 'products',
       date: new Date().toISOString(),
-      status: 'Payment pending',
-      paymentStatus: 'Pending',
+      status: cod ? 'Processing' : 'Payment pending',
+      paymentMethod: cod ? 'cod' : 'online',
+      paymentStatus: cod ? 'Cash on delivery' : 'Pending',
       total: total / 100,
       subtotal: subtotal / 100,
       discount: discount / 100,
@@ -156,7 +232,7 @@ export async function createOrder(req, res) {
       deliveryAddress: b.address,
     };
     await sequelize.query(
-      'INSERT INTO orders(id,customer_id,request_key,fingerprint,amount_paise,payload) VALUES(:id,:customer,:key,:fingerprint,:amount,CAST(:payload AS jsonb))',
+      'INSERT INTO product_checkouts(id,order_number,customer_id,request_key,fingerprint,amount_paise,payload,stock_state) VALUES(:id,:id,:customer,:key,:fingerprint,:amount,CAST(:payload AS jsonb),:stock)',
       {
         replacements: {
           id,
@@ -164,38 +240,43 @@ export async function createOrder(req, res) {
           key: b.requestKey,
           fingerprint,
           amount: total,
+          stock: 'reserved',
           payload: JSON.stringify(payload),
         },
         transaction,
       },
     );
-    for (const item of items)
-      await sequelize.query(
-        'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot) VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb))',
-        {
-          replacements: {
-            id,
-            product: item.id,
-            qty: item.quantity,
-            unit: paise(item.snapshot.price),
-            snapshot: JSON.stringify(item.snapshot),
-          },
-          transaction,
-        },
-      );
+    await reserveStock(id, items, transaction);
+    if (cod) {
+      await settleStock(id, true, transaction);
+      await sequelize.query("UPDATE product_checkouts SET payment_status='COD',session_state='not_required',stock_state='deducted' WHERE id=:id", { replacements: { id }, transaction });
+    }
+    if (cod) await promoteCheckout(id, transaction);
     row = {
       id,
       customer_id: customer.id,
       payload,
       amount_paise: total,
-      payment_status: 'NEW',
+      payment_status: cod ? 'COD' : 'NEW',
       session_state: 'created',
     };
   });
-  if (row.payment_status === 'CHARGED' || row.payment_url)
+  if (['CHARGED', 'FAILED', 'COD'].includes(row.payment_status) || row.payment_url)
     return res.json(orderView(row));
+  // A previous timeout may have created a gateway session. Check it before retrying.
+  if (row.session_state === 'unknown') {
+    try {
+      row = await syncOrder(row);
+      if (row.payment_url || ['CHARGED', 'FAILED'].includes(row.payment_status))
+        return res.json(orderView(row));
+      throw new HttpError(503, 'Payment is still being verified. Your cart is unchanged. Please try again later.');
+    } catch (error) {
+      if (error.gatewayStatus !== 404) throw error;
+      await sequelize.query("UPDATE product_checkouts SET session_state='created',last_error=NULL WHERE id=:id AND session_state='unknown'", { replacements: { id: row.id } });
+    }
+  }
   const claim = await sequelize.query(
-    "UPDATE orders SET session_state='submitting',updated_at=now() WHERE id=:id AND session_state='created' RETURNING id",
+    "UPDATE product_checkouts SET session_state='submitting',updated_at=now() WHERE id=:id AND session_state='created' RETURNING id",
     { replacements: { id: row.id }, type: QueryTypes.SELECT },
   );
   if (!claim.length) return res.status(202).json(orderView(row));
@@ -217,16 +298,20 @@ export async function createOrder(req, res) {
     const url = paymentUrl(result.payment_links?.web);
     if (result.order_id !== row.id || !url) throw Error('Invalid gateway session');
     await sequelize.query(
-      "UPDATE orders SET session_state='ready',payment_url=:url,updated_at=now() WHERE id=:id",
+      "UPDATE product_checkouts SET session_state='ready',payment_url=:url,updated_at=now() WHERE id=:id",
       { replacements: { id: row.id, url } },
     );
     row.payment_url = url;
-  } catch {
+  } catch (error) {
+    const rejected = [401, 403].includes(error.gatewayStatus);
     await sequelize.query(
-      "UPDATE orders SET session_state='unknown',last_error='Gateway session unverified',updated_at=now() WHERE id=:id",
-      { replacements: { id: row.id } },
+      'UPDATE product_checkouts SET session_state=:state,last_error=:error,updated_at=now() WHERE id=:id',
+      { replacements: { id: row.id, state: rejected ? 'created' : 'unknown', error: rejected ? 'Gateway authentication rejected' : 'Gateway session unverified' } },
     );
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(502, 'Could not open HDFC payment. Your cart is unchanged. Please try again later.');
   }
+  row = await findOrder(row.id, customer.id);
   res.status(row.payment_url ? 201 : 202).json(orderView(row));
 }
 export async function getOrder(req, res) {
@@ -235,7 +320,7 @@ export async function getOrder(req, res) {
 }
 export async function listOrders(req, res) {
   const rows = await sequelize.query(
-    'SELECT * FROM orders WHERE customer_id=:id ORDER BY created_at DESC',
+    "SELECT * FROM orders WHERE customer_id=:id AND payment_status IN ('CHARGED','COD') ORDER BY created_at DESC",
     { replacements: { id: req.credential.id }, type: QueryTypes.SELECT },
   );
   res.json({ data: rows.map(orderView) });
