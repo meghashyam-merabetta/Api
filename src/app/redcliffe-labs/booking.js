@@ -158,6 +158,7 @@ export async function createBooking(req, res) {
   const pricing = labPricing(
     items.reduce((sum, item) => sum + paise(item.snapshot.price), 0),
     coupon,
+    pricingSettings,
   );
   const id = randomUUID();
   const outgoing = bookingPayload(
