@@ -30,6 +30,8 @@ export function verifiedStatus(row, data) {
       502,
       'Payment details could not be verified. Please contact support.',
     );
+  // A sandbox/simulated CHARGED response is not proof of a real customer payment.
+  if (data.status === 'CHARGED' && !isLivePayment(row, data)) return 'FAILED';
   return data.status === 'CHARGED'
     ? 'CHARGED'
     : ['AUTHENTICATION_FAILED', 'AUTHORIZATION_FAILED', 'JUSPAY_DECLINED'].includes(
@@ -37,6 +39,17 @@ export function verifiedStatus(row, data) {
         )
       ? 'FAILED'
       : 'PENDING';
+}
+export function isLivePayment(row, data) {
+  const gateway = String(data.txn_detail?.gateway || data.gateway || '').trim().toUpperCase();
+  const test = value => value === true || value === 'true' || value === 1 || value === '1';
+  return env.HDFC_ENVIRONMENT === 'production'
+    && row.payload?.paymentEnvironment !== 'sandbox'
+    && !String(row.payment_url || '').includes('hdfcuat.')
+    && !!gateway && !['DUMMY', 'TEST', 'SANDBOX'].includes(gateway)
+    && String(data.gateway_id) !== '100' && String(data.txn_detail?.gateway_id) !== '100'
+    && !test(data.test_mode) && !test(data.txn_detail?.test_mode)
+    && typeof data.txn_id === 'string' && !!data.txn_id.trim();
 }
 // Called under the checkout row lock, in the same transaction as stock settlement.
 async function promoteCheckout(id, transaction) {
@@ -114,7 +127,7 @@ export async function applyPaymentStatus(id, data) {
           : 'Payment pending';
     const payment =
       status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending';
-    const payload = { ...row.payload, status: label, paymentStatus: payment };
+    const payload = { ...row.payload, status: data.status === 'CHARGED' && status === 'FAILED' ? 'Payment not verified as live' : label, paymentStatus: payment };
     const url =
       status === 'FAILED' || status === 'CHARGED'
         ? null
@@ -213,6 +226,7 @@ export async function createOrder(req, res) {
       date: new Date().toISOString(),
       status: cod ? 'Processing' : 'Payment pending',
       paymentMethod: cod ? 'cod' : 'online',
+      paymentEnvironment: cod ? null : env.HDFC_ENVIRONMENT,
       paymentStatus: cod ? 'Cash on delivery' : 'Pending',
       total: total / 100,
       subtotal: subtotal / 100,
