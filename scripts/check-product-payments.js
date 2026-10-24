@@ -1,3 +1,4 @@
+import {readPricingSettings, chargeBelow} from '../src/app/pricing/settings.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
@@ -9,6 +10,7 @@ import {
   findOrder,
   syncOrder,
   applyPaymentStatus,
+  verifiedStatus,
   listOrders,
 } from '../src/app/orders/orders.controller.js';
 import { paymentWebhook } from '../src/app/hdfc/callbacks.js';
@@ -66,7 +68,7 @@ async function checkout(quantity, key = randomUUID(), paymentMethod = 'online') 
 }
 try {
   Object.assign(env, {
-    HDFC_ENVIRONMENT: 'sandbox',
+    HDFC_ENVIRONMENT: 'production',
     HDFC_API_KEY: 'test-key',
     HDFC_MERCHANT_ID: 'test-merchant',
     HDFC_CLIENT_ID: 'test-client',
@@ -79,7 +81,7 @@ try {
       options.headers.Authorization,
       'Basic ' + Buffer.from('test-key:').toString('base64'),
     );
-    assert.ok(String(url).startsWith('https://smartgateway.hdfcuat.bank.in/'));
+    assert.ok(String(url).startsWith('https://smartgateway.hdfc.bank.in/'));
     if (options.method === 'POST') {
       sessionCalls++;
       const body = JSON.parse(options.body);
@@ -93,12 +95,14 @@ try {
         amount: body.amount,
         status: 'PENDING',
         txn_id: marker,
+        txn_detail: { gateway: 'HDFC' },
+        gateway_id: 1,
       };
       responses.set(body.order_id, result);
       return Response.json({
         order_id: body.order_id,
         payment_links: {
-          web: 'https://smartgateway.hdfcuat.bank.in/payment-page/' + body.order_id,
+          web: 'https://smartgateway.hdfc.bank.in/payment-page/' + body.order_id,
         },
       });
     }
@@ -149,7 +153,9 @@ try {
   rejectSession = false;
   const first = await checkout(2, key);
   assert.equal(first.id, orderIds[0], 'Credential fix retries the same checkout without duplicate stock reservations');
-  assert.equal(first.total, 220);
+  const policy = await readPricingSettings();
+  const expectedTotal = 180 + (chargeBelow(20000, policy.product_delivery_below_paise, policy.product_delivery_charge_paise) + chargeBelow(20000, policy.product_handling_below_paise, policy.product_handling_charge_paise)) / 100;
+  assert.equal(first.total, expectedTotal);
   assert.equal(first.discount, 20);
   assert.equal((await query('SELECT id FROM orders WHERE customer_id=:id', { id: customerId })).length, 0, 'No order exists before payment');
   assert.equal((await query('SELECT order_id FROM order_details WHERE order_id=:id', { id: first.id })).length, 0, 'No order lines exist before payment');
@@ -159,7 +165,7 @@ try {
     return visible;
   };
   assert.equal((await listed()).length, 0, 'Unpaid checkout must not appear as a placed order');
-  assert.equal(responses.get(first.id).amount, '220.00');
+  assert.equal(responses.get(first.id).amount, expectedTotal.toFixed(2));
   assert.deepEqual(await stock(), { quantity_on_hand: 3, quantity_reserved: 2 });
   await checkout(2, key);
   await checkout(2);
@@ -173,6 +179,12 @@ try {
     }),
   );
   assert.deepEqual(await stock(), { quantity_on_hand: 3, quantity_reserved: 2 });
+  const paidFixture = { ...responses.get(first.id), status: 'CHARGED' };
+  const checkoutFixture = await findOrder(first.id);
+  assert.equal(verifiedStatus(checkoutFixture, { ...paidFixture, txn_detail: { gateway: 'DUMMY' }, gateway_id: 100 }), 'FAILED');
+  assert.equal(verifiedStatus(checkoutFixture, { ...paidFixture, test_mode: true }), 'FAILED');
+  assert.equal(verifiedStatus({ ...checkoutFixture, payload: { ...checkoutFixture.payload, paymentEnvironment: 'sandbox' } }, paidFixture), 'FAILED');
+  assert.equal(verifiedStatus(checkoutFixture, { ...paidFixture, txn_detail: {}, gateway_id: null }), 'FAILED');
   responses.get(first.id).status = 'CHARGED';
   const before = await findOrder(first.id, customerId);
   await Promise.all([syncOrder(before), syncOrder(before)]);

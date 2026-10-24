@@ -189,7 +189,7 @@ export async function catalog(_req, res) {
   if (!lab) throw new HttpError(503, 'Redcliffe Labs is currently unavailable.');
   const [rows, states] = await Promise.all([
     sequelize.query(
-      "SELECT catalog_data || jsonb_build_object('catalogType', CASE WHEN provider_data->>'type'='package' THEN 'package' ELSE 'test' END) AS catalog_data, provider_data->>'specimen_instructions' AS specimen_instructions FROM lab_packages WHERE lab_id='redcliffe' AND active ORDER BY (catalog_data->>'price')::numeric ASC, catalog_data->>'name', id",
+      "SELECT catalog_data || jsonb_build_object('catalogType', CASE WHEN provider_data->>'type'='package' THEN 'package' ELSE 'test' END, 'recommendedGender', provider_data->>'recommended_gender', 'recommendedAge', provider_data->>'recommended_age') AS catalog_data, provider_data->>'specimen_instructions' AS specimen_instructions FROM lab_packages WHERE lab_id='redcliffe' AND active ORDER BY (catalog_data->>'price')::numeric ASC, catalog_data->>'name', id",
       { type: QueryTypes.SELECT },
     ),
     sequelize.query(
