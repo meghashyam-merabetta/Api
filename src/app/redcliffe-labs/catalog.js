@@ -6,6 +6,7 @@ import { HttpError } from '../../shared/errors.js';
 import { paths, providerRequest, providerSucceeded } from './client.js';
 import { catalogSyncDue } from './catalog-schedule.js';
 import { specimenInstructions } from './instructions.js';
+import { normalizeParameters } from './parameters.js';
 
 export function normalizePackage(row) {
   const code = String(row.code || '').trim();
@@ -225,9 +226,9 @@ export async function parameters(req, res) {
     );
   }
   res.json({
-    data: body.data.map((group) => ({
-      name: String(group.name || ''),
-      parameters: (group.package_detail || []).map((item) => String(item.name || '')),
-    })),
+    data: normalizeParameters(body),
+    parameter: Number.isInteger(Number(body.parameter)) && body.parameter !== null && body.parameter !== undefined && Number(body.parameter) >= 0
+      ? Number(body.parameter)
+      : normalizeParameters(body).reduce((total, group) => total + group.parameters.length, 0),
   });
 }
