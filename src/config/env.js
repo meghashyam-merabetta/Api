@@ -29,6 +29,8 @@ const schema = z
     IOS_STORE_URL: z.string().trim().default(''),
     OTP_MODE: z.enum(['development', 'disabled', 'stpl', 'msg91']).default('disabled'),
     EMAIL_OTP_MODE: z.enum(['inherit', 'disabled', 'smtp']).default('inherit'),
+    APP_REVIEW_EMAIL: z.union([z.literal(''), z.email()]).default(''),
+    APP_REVIEW_OTP: z.union([z.literal(''), z.string().regex(/^\d{6}$/)]).default(''),
     SMTP_HOST: z.string().trim().default(''),
     SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
     SMTP_SECURE: z
@@ -87,6 +89,11 @@ const schema = z
       .default('info'),
   })
   .superRefine((v, ctx) => {
+    if (Boolean(v.APP_REVIEW_EMAIL) !== Boolean(v.APP_REVIEW_OTP))
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Set both APP_REVIEW_EMAIL and APP_REVIEW_OTP, or leave both empty',
+      });
     if (v.APP_JWT_SECRET === v.ADMIN_JWT_SECRET)
       ctx.addIssue({ code: 'custom', message: 'JWT secrets must differ' });
     if (v.COOKIE_SAME_SITE === 'none' && v.NODE_ENV !== 'production')
