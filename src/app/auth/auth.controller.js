@@ -21,15 +21,18 @@ import { getCustomerAccount } from '../customers/customer.controller.js';
 import { sendLoginOtp, stplConfig } from '../stpl/client.js';
 import { sendMsg91Otp, msg91Config } from '../msg91/client.js';
 import { sendEmailOtp, smtpConfig } from '../email/client.js';
+import { reviewOtpFor } from '../../shared/review-login.js';
 export { getProfile as me } from '../customers/customer.controller.js';
 
 export async function requestOtp(req, res) {
   const { method, contact } = req.validated;
-  const email = method === 'email' && env.EMAIL_OTP_MODE === 'smtp';
+  const reviewCode = reviewOtpFor(method, contact, env);
+  const email = !reviewCode && method === 'email' && env.EMAIL_OTP_MODE === 'smtp';
   const sms = method === 'phone' && ['stpl', 'msg91'].includes(env.OTP_MODE);
-  if (method === 'email' && env.EMAIL_OTP_MODE === 'disabled')
+  if (!reviewCode && method === 'email' && env.EMAIL_OTP_MODE === 'disabled')
     throw new HttpError(503, 'Email OTP delivery is not configured.');
   if (
+    !reviewCode &&
     !email &&
     !sms &&
     (env.NODE_ENV === 'production' || env.OTP_MODE !== 'development')
@@ -44,7 +47,7 @@ export async function requestOtp(req, res) {
     else stplConfig();
   }
   const id = randomUUID();
-  const code = String(randomInt(100000, 1000000));
+  const code = reviewCode || String(randomInt(100000, 1000000));
 
   await sequelize.transaction(async (transaction) => {
     await lockOtpContact(method, contact, transaction);
@@ -110,8 +113,8 @@ export async function requestOtp(req, res) {
     challengeId: id,
     expiresIn,
     resendAfter: OTP_RESEND_SECONDS,
-    ...(!sms && !email ? { devCode: code } : {}),
-    delivery: email ? 'email' : sms ? 'sms' : 'development',
+    ...(!reviewCode && !sms && !email ? { devCode: code } : {}),
+    delivery: reviewCode || email ? 'email' : sms ? 'sms' : 'development',
   });
 }
 
