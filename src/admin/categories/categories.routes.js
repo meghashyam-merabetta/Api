@@ -1,4 +1,5 @@
 import {
+  categoryTree,
   listCategories,
   getCategory,
   createCategory,
@@ -7,6 +8,7 @@ import {
 } from './categories.controller.js';
 
 import {
+  treeQuerySchema,
   listQuerySchema,
   categoryIdParamsSchema,
   createCategorySchema,
@@ -14,6 +16,13 @@ import {
 } from './categories.schema.js';
 
 export const categoriesRoutes = [
+  {
+    method: 'get',
+    path: '/tree',
+    query: treeQuerySchema,
+    auth: true,
+    handler: categoryTree,
+  },
   {
     method: 'get',
     path: '/',
