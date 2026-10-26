@@ -1,7 +1,14 @@
-import { listProducts } from './products.controller.js';
-import { listQuerySchema } from './products.schema.js';
+import { listProducts, getProduct } from './products.controller.js';
+import { listQuerySchema, productParamsSchema } from './products.schema.js';
 
 export const productRoutes = [
+  {
+    method: 'get',
+    path: '/:id',
+    params: productParamsSchema,
+    auth: true,
+    handler: getProduct,
+  },
   {
     method: 'get',
     path: '/',

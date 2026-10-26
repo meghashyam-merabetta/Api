@@ -1,4 +1,4 @@
-
+import { productVariantRoutes } from './variants.routes.js';
 import {
   listProducts,
   getProduct,
@@ -8,9 +8,9 @@ import {
   uploadImagesProduct,
   listProductImages,
   setPrimaryProductImage,
+  replaceProductImage,
   deleteProductImage,
 } from './products.controller.js';
-
 
 import {
   listQuerySchema,
@@ -20,11 +20,8 @@ import {
   updateProductSchema,
 } from './products.schema.js';
 
-
-
-
-
 export const productsRoutes = [
+  ...productVariantRoutes,
   {
     method: 'get',
     path: '/',
@@ -78,29 +75,22 @@ export const productsRoutes = [
   {
     method: 'patch',
     path: '/:productId/images/:imageId/primary',
-    params: productIdParamsSchema,
+    params: productImageParamsSchema,
     auth: true,
     handler: setPrimaryProductImage,
   },
   {
     method: 'delete',
     path: '/:productId/images/:imageId',
-    params: productIdParamsSchema,
+    params: productImageParamsSchema,
     auth: true,
     handler: deleteProductImage,
   },
   {
-  method: 'patch',
-  path: '/:productId/images/:imageId/primary',
-  params: productImageParamsSchema,
-  auth: true,
-  handler: setPrimaryProductImage,
-},
-{
-  method: 'delete',
-  path: '/:productId/images/:imageId',
-  params: productImageParamsSchema,
-  auth: true,
-  handler: deleteProductImage,
-},
+    method: 'put',
+    path: '/:productId/images/:imageId',
+    params: productImageParamsSchema,
+    auth: true,
+    handler: replaceProductImage,
+  },
 ];

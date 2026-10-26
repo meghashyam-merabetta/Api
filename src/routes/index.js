@@ -1,3 +1,5 @@
+import { brandsRoutes } from '../admin/brands/brands.routes.js';
+import { variantAttributeRoutes } from '../admin/products/variants.routes.js';
 import { contactRoutes } from '../app/contact/routes.js';
 import { bannerRoutes } from '../app/banners/routes.js';
 import { couponRoutes } from '../app/coupons/routes.js';
@@ -39,6 +41,8 @@ const modules = [
   { path: '/app/wishlist', realm: 'app', routes: wishlistRoutes },
   { path: '/app', realm: 'app', routes: masterRoutes },
   { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
+  { path: '/admin/brands', realm: 'admin', routes: brandsRoutes },
+  { path: '/admin/variant-attributes', realm: 'admin', routes: variantAttributeRoutes },
   { path: '/admin/products', realm: 'admin', routes: adminProducts },
   { path: '/admin/categories', realm: 'admin', routes: adminCategories },
   { path: '/admin/users', realm: 'admin', routes: adminUsers },

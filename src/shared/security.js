@@ -31,14 +31,6 @@ export function csrfGuard(req, res, next) {
     return next();
   }
 
-    // Product image uploads use multipart/form-data, not JSON.
-  // Keep the trusted-origin check above the normal content-type validation.
-  if (
-    req.method === 'POST' &&
-    /^\/api\/admin\/products\/[^/]+\/images$/.test(req.path)
-  ) {
-    return next();
-  }
   // Required even for login/register to prevent login CSRF. CLI clients must send Origin too.
   if (!isTrustedOrigin(req.get('origin'), req.path)) {
     req.log?.warn(
@@ -53,6 +45,16 @@ export function csrfGuard(req, res, next) {
       403,
       'App origin is not allowed. Check API ALLOWED_ORIGINS configuration.',
     );
+  }
+  // Image uploads and replacements use multipart bodies after the Origin check.
+  const imageMultipart =
+    (req.method === 'POST' && /^\/api\/admin\/products\/[^/]+\/images$/.test(req.path)) ||
+    (req.method === 'PUT' &&
+      /^\/api\/admin\/products\/[^/]+\/images\/[^/]+$/.test(req.path));
+  if (imageMultipart) {
+    if (!req.is('multipart/form-data'))
+      throw new HttpError(415, 'Content-Type must be multipart/form-data');
+    return next();
   }
   if (!req.is('application/json'))
     throw new HttpError(415, 'Content-Type must be application/json');

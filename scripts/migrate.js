@@ -39,6 +39,12 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'));
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/023-admin-catalog-base.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/024-admin-catalog-details.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/025-admin-catalog-compatibility.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => {
+    await sequelize.query(readFileSync(new URL('../sql/026-product-schema-alignment.sql', import.meta.url), 'utf8'), { transaction });
+  });
   await sequelize.query(
   readFileSync(new URL('../sql/022-product-images.sql', import.meta.url), 'utf8'),
 );

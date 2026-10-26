@@ -49,11 +49,7 @@ app.use(
       origin: allowAll ? '*' : trusted,
       credentials: !allowAll,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-App-Client',
-      ],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-App-Client'],
     });
   }),
 );
@@ -119,7 +115,16 @@ app.use((err, req, res, next) => {
       })),
     });
   if (err instanceof UniqueConstraintError)
-    return res.status(409).json({ error: 'Account already exists' });
+    return res
+      .status(409)
+      .json({
+        error:
+          req.path.startsWith('/api/admin/products') ||
+          req.path.startsWith('/api/admin/brands') ||
+          req.path.startsWith('/api/admin/variant-attributes')
+            ? 'A record with these unique fields already exists'
+            : 'Account already exists',
+      });
   const status =
     Number.isInteger(err.status) &&
     err.status >= 400 &&

@@ -1,3 +1,4 @@
+import { reserveCheckoutItems, nextOrderNumber } from './product-stock.js';
 import { formatAddress } from '../../shared/address.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
@@ -36,7 +37,8 @@ export function verifiedStatus(row, data) {
 }
 export async function findOrder(id, customer) {
   const [row] = await sequelize.query(
-    'SELECT * FROM orders WHERE id=:id' + (customer ? ' AND customer_id=:customer' : ''),
+    'SELECT * FROM product_checkouts WHERE id=:id' +
+      (customer ? ' AND customer_id=:customer' : ''),
     { replacements: { id, customer }, type: QueryTypes.SELECT },
   );
   if (!row) throw new HttpError(404, 'Order not found');
@@ -48,7 +50,7 @@ export async function syncOrder(row) {
   const status = verifiedStatus(row, data);
   const url = paymentUrl(data.payment_links?.web);
   await sequelize.query(
-    `UPDATE orders SET payment_status=:status,transaction_id=:txn,payment_url=COALESCE(:url,payment_url),payload=jsonb_set(jsonb_set(payload,'{status}',to_jsonb(CAST(:label AS text))),'{paymentStatus}',to_jsonb(CAST(:payment AS text))),updated_at=now() WHERE id=:id AND payment_status<>'CHARGED'`,
+    `UPDATE product_checkouts SET payment_checked_at=now(),stock_state=CASE WHEN :status = 'CHARGED' AND stock_state='reserved' THEN 'committed' ELSE stock_state END,payment_status=:status,transaction_id=:txn,payment_url=COALESCE(:url,payment_url),payload=jsonb_set(jsonb_set(payload,'{status}',to_jsonb(CAST(:label AS text))),'{paymentStatus}',to_jsonb(CAST(:payment AS text))),updated_at=now() WHERE id=:id AND payment_status<>'CHARGED'`,
     {
       replacements: {
         id: row.id,
@@ -71,7 +73,14 @@ export async function syncOrder(row) {
 export function orderView(row) {
   return {
     ...row.payload,
-    paymentUrl: row.payment_status === 'CHARGED' ? null : paymentUrl(row.payment_url),
+    orderNumber: row.order_number ?? row.payload.orderNumber ?? null,
+    stockState: row.stock_state ?? 'legacy',
+    paymentExpiry: row.payment_expiry ?? null,
+    paymentUrl:
+      row.payment_status === 'CHARGED' ||
+      (row.payment_expiry && new Date(row.payment_expiry).getTime() <= Date.now())
+        ? null
+        : paymentUrl(row.payment_url),
   };
 }
 export async function createOrder(req, res) {
@@ -99,7 +108,7 @@ export async function createOrder(req, res) {
       transaction,
     });
     const [old] = await sequelize.query(
-      "SELECT * FROM orders WHERE customer_id=:customer AND (request_key=:key OR (fingerprint=:fingerprint AND payment_status<>'CHARGED')) ORDER BY (request_key=:key) DESC LIMIT 1",
+      "SELECT * FROM product_checkouts WHERE customer_id=:customer AND (request_key=:key OR (fingerprint=:fingerprint AND payment_status<>'CHARGED')) ORDER BY (request_key=:key) DESC LIMIT 1",
       {
         replacements: { customer: customer.id, key: b.requestKey, fingerprint },
         type: QueryTypes.SELECT,
@@ -112,26 +121,26 @@ export async function createOrder(req, res) {
       row = old;
       return;
     }
-    const items = [];
+    const reservation = await reserveCheckoutItems(b.items, transaction);
+    const items = reservation.items;
     let subtotal = 0;
-    for (const item of b.items) {
-      const [product] = await sequelize.query(
-        'SELECT data FROM product_catalog WHERE id=:id AND active',
-        { replacements: { id: item.id }, type: QueryTypes.SELECT, transaction },
-      );
-      if (!product) throw new HttpError(422, 'A product is no longer available.');
-      const unit = paise(product.data.price);
-      subtotal += unit * item.quantity;
-      items.push({ ...item, snapshot: product.data });
+    for (const item of items) {
+      subtotal += paise(item.snapshot.price) * item.quantity;
+      if (!Number.isSafeInteger(subtotal))
+        throw new HttpError(422, 'Invalid checkout total');
     }
+    const orderNumber = await nextOrderNumber(transaction);
     const coupon = await resolveCoupon(b.couponCode, 'products', transaction);
     const discount = couponDiscount(subtotal, coupon);
     const delivery = subtotal >= 49900 ? 0 : 4000;
     const total = subtotal - discount + delivery;
+    if (!Number.isSafeInteger(total) || total <= 0)
+      throw new HttpError(422, 'Checkout total must be a positive amount.');
     const id = 'MB' + randomBytes(9).toString('hex');
     const payload = {
       id,
       kind: 'products',
+      orderNumber,
       date: new Date().toISOString(),
       status: 'Payment pending',
       paymentStatus: 'Pending',
@@ -156,7 +165,7 @@ export async function createOrder(req, res) {
       deliveryAddress: b.address,
     };
     await sequelize.query(
-      'INSERT INTO orders(id,customer_id,request_key,fingerprint,amount_paise,payload) VALUES(:id,:customer,:key,:fingerprint,:amount,CAST(:payload AS jsonb))',
+      'INSERT INTO product_checkouts(id,customer_id,request_key,fingerprint,amount_paise,payload,stock_state,order_number) VALUES(:id,:customer,:key,:fingerprint,:amount,CAST(:payload AS jsonb),:stockState,:orderNumber)',
       {
         replacements: {
           id,
@@ -165,24 +174,12 @@ export async function createOrder(req, res) {
           fingerprint,
           amount: total,
           payload: JSON.stringify(payload),
+          stockState: reservation.stockState,
+          orderNumber,
         },
         transaction,
       },
     );
-    for (const item of items)
-      await sequelize.query(
-        'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot) VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb))',
-        {
-          replacements: {
-            id,
-            product: item.id,
-            qty: item.quantity,
-            unit: paise(item.snapshot.price),
-            snapshot: JSON.stringify(item.snapshot),
-          },
-          transaction,
-        },
-      );
     row = {
       id,
       customer_id: customer.id,
@@ -190,12 +187,14 @@ export async function createOrder(req, res) {
       amount_paise: total,
       payment_status: 'NEW',
       session_state: 'created',
+      stock_state: reservation.stockState,
+      order_number: orderNumber,
     };
   });
   if (row.payment_status === 'CHARGED' || row.payment_url)
     return res.json(orderView(row));
   const claim = await sequelize.query(
-    "UPDATE orders SET session_state='submitting',updated_at=now() WHERE id=:id AND session_state='created' RETURNING id",
+    "UPDATE product_checkouts SET session_state='submitting',updated_at=now() WHERE id=:id AND session_state='created' RETURNING id",
     { replacements: { id: row.id }, type: QueryTypes.SELECT },
   );
   if (!claim.length) return res.status(202).json(orderView(row));
@@ -217,13 +216,13 @@ export async function createOrder(req, res) {
     const url = paymentUrl(result.payment_links?.web);
     if (result.order_id !== row.id || !url) throw Error('Invalid gateway session');
     await sequelize.query(
-      "UPDATE orders SET session_state='ready',payment_url=:url,updated_at=now() WHERE id=:id",
+      "UPDATE product_checkouts SET session_state='ready',payment_url=:url,updated_at=now() WHERE id=:id",
       { replacements: { id: row.id, url } },
     );
     row.payment_url = url;
   } catch {
     await sequelize.query(
-      "UPDATE orders SET session_state='unknown',last_error='Gateway session unverified',updated_at=now() WHERE id=:id",
+      "UPDATE product_checkouts SET session_state='unknown',last_error='Gateway session unverified',updated_at=now() WHERE id=:id",
       { replacements: { id: row.id } },
     );
   }
@@ -235,7 +234,7 @@ export async function getOrder(req, res) {
 }
 export async function listOrders(req, res) {
   const rows = await sequelize.query(
-    'SELECT * FROM orders WHERE customer_id=:id ORDER BY created_at DESC',
+    'SELECT * FROM product_checkouts WHERE customer_id=:id ORDER BY created_at DESC',
     { replacements: { id: req.credential.id }, type: QueryTypes.SELECT },
   );
   res.json({ data: rows.map(orderView) });

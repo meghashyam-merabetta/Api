@@ -16,7 +16,7 @@ async function isEmpty(customer, transaction) {
     `SELECT
     EXISTS(SELECT 1 FROM customer_addresses WHERE customer_id=:id) OR
     EXISTS(SELECT 1 FROM customer_family_members WHERE customer_id=:id) OR
-    EXISTS(SELECT 1 FROM orders WHERE customer_id=:id) OR
+    EXISTS(SELECT 1 FROM product_checkouts WHERE customer_id=:id) OR
     EXISTS(SELECT 1 FROM lab_bookings WHERE customer_id=:id) OR
     EXISTS(SELECT 1 FROM customer_cart_items WHERE customer_id=:id) OR
     EXISTS(SELECT 1 FROM customer_wishlist_items WHERE customer_id=:id) AS activity`,
