@@ -1,7 +1,13 @@
+import {
+  ProductCatalog,
+  ProductCheckout,
+  ProductOrderCounter,
+} from './product-checkout.model.js';
 export { User } from './user.model.js';
 export { Session } from './session.model.js';
 
 import { ProductImage } from './product-image.model.js';
+import { Brand, ProductVariant, VariantAttribute } from './catalog.model.js';
 
 import { User } from './user.model.js';
 import { Session } from './session.model.js';
@@ -33,10 +39,16 @@ export const models = {
   masterState: MasterState,
   masterCity: MasterCity,
   adminProfile: AdminProfile,
-  product: Product, 
+  productCatalog: ProductCatalog,
+  productCheckout: ProductCheckout,
+  productOrderCounter: ProductOrderCounter,
+  product: Product,
   category: Category,
   productCategory: ProductCategory,
   productImage: ProductImage,
+  brand: Brand,
+  productVariant: ProductVariant,
+  variantAttribute: VariantAttribute,
 };
 
 Product.belongsToMany(Category, {
@@ -73,3 +85,17 @@ ProductImage.belongsTo(Product, {
   foreignKey: 'product_id',
   as: 'product',
 });
+Product.belongsTo(Brand, { foreignKey: 'brand_id', as: 'brand' });
+Brand.hasMany(Product, { foreignKey: 'brand_id', as: 'products' });
+Product.hasMany(ProductVariant, {
+  foreignKey: 'product_id',
+  as: 'variants',
+  onDelete: 'CASCADE',
+});
+ProductVariant.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+
+export { Product, Category, Brand, ProductVariant, VariantAttribute };
+
+ProductCheckout.belongsTo(Customer, { foreignKey: 'customer_id', as: 'customer' });
+Customer.hasMany(ProductCheckout, { foreignKey: 'customer_id', as: 'productCheckouts' });
+export { ProductCatalog, ProductCheckout, ProductOrderCounter };

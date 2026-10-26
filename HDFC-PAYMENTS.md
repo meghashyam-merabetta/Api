@@ -14,13 +14,13 @@ Set API/.env:
 Configure https://YOUR-API-DOMAIN/api/payments/hdfc/webhook in the bank dashboard. Enable relevant order/transaction payment events. Return URL must be public HTTPS, without query parameters. Restart the backend after changing env.
 
 ## Data and behavior
-014-product-orders.sql creates orders, order_details, product_catalog. Migration seeds existing application products without overwriting existing DB prices. Review these catalog prices before enabling live payments. Checkout uses DB prices and the existing MERA20 discount/delivery rules; client amounts are never trusted.
+014-product-orders.sql creates the legacy orders/order_details tables and product_catalog. Migration 026-product-schema-alignment.sql creates product_checkouts and product_order_counters and copies legacy history; the updated code writes to product_checkouts. Migration seeds existing application products without overwriting existing DB prices. Review these catalog prices before enabling live payments. Checkout uses DB prices and the existing MERA20 discount/delivery rules; client amounts are never trusted.
 
 POST /api/app/orders saves the order and item snapshots before contacting HDFC. A request key and customer lock protect retries. Identical unpaid checkout details reuse the saved order, even with a new request key. An ambiguous session submission is not blindly retried: use Check payment status to recover the bank payment link or contact support if unavailable.
 
 GET /api/app/orders lists owned orders. GET /api/app/orders/:id verifies bank status. Only verified CHARGED with matching merchant, order, INR and amount is paid. Pending/failed statuses do not clear the cart. Paid state cannot regress on delayed notifications. The callback page never trusts browser parameters; the app and authenticated webhook query HDFC directly.
 
-Each item is persisted in order_details with quantity, unit price and immutable product snapshot. Third-party metadata goes into third_party_api_logs. No card data, API keys, full bank responses or payment links are logged.
+Each item is persisted in product_checkouts.payload.items with quantity and an immutable product snapshot. Historical order_details remain in place. Checkout now returns a daily orderNumber, reserves managed stock once, and records payment_checked_at on verified status checks. See PRODUCT-SCHEMA.md for deployment and reservation recovery limitations. Third-party metadata goes into third_party_api_logs. No card data, API keys, full bank responses or payment links are logged.
 
 The app opens HDFC checkout externally, then supports Check payment status and foreground refresh. Webhooks update payments even when the app is closed. No refund or product cancellation flow is implemented; real orders cannot use the old demo cancel action.
 

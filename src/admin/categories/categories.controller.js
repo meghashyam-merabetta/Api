@@ -73,11 +73,16 @@ export async function listCategories(req, res) {
     limit = 20,
     offset = 0,
     parent_category_id,
+    roots_only,
     search,
     is_active,
   } = req.validatedQuery;
 
   const where = {};
+
+  if (roots_only === 'true' && parent_category_id !== undefined)
+    throw new HttpError(400, 'Choose roots_only or parent_category_id');
+  if (roots_only === 'true') where.parent_category_id = null;
 
   if (parent_category_id !== undefined) {
     where.parent_category_id = parent_category_id;
@@ -180,20 +185,50 @@ export async function deleteCategory(req, res) {
   ]);
 
   if (productCount > 0) {
-    throw new HttpError(
-      409,
-      'Cannot delete a category that has products assigned to it',
-    );
+    throw new HttpError(409, 'Cannot delete a category that has products assigned to it');
   }
 
   if (childCount > 0) {
-    throw new HttpError(
-      409,
-      'Cannot delete a category that has subcategories',
-    );
+    throw new HttpError(409, 'Cannot delete a category that has subcategories');
   }
 
   await category.destroy();
 
   res.status(204).end();
+}
+export async function categoryTree(req, res) {
+  const where = {};
+  if (req.validatedQuery.is_active !== undefined)
+    where.is_active = req.validatedQuery.is_active === 'true';
+  const rows = await Category.findAll({
+    where,
+    order: [
+      ['sort_order', 'ASC'],
+      ['category_name', 'ASC'],
+      ['category_id', 'ASC'],
+    ],
+  });
+  const nodes = new Map(
+    rows.map((row) => [String(row.category_id), { ...row.toJSON(), subcategories: [] }]),
+  );
+  const roots = [];
+  for (const node of nodes.values()) {
+    if (node.parent_category_id === null || node.parent_category_id === undefined)
+      roots.push(node);
+    else nodes.get(String(node.parent_category_id))?.subcategories.push(node);
+  }
+  // Detect corrupt persisted hierarchies before serializing a recursive response.
+  const visited = new Set();
+  for (const row of rows) {
+    let node = nodes.get(String(row.category_id));
+    const path = new Set();
+    while (node && !visited.has(String(node.category_id))) {
+      const id = String(node.category_id);
+      if (path.has(id)) throw new HttpError(409, 'Category hierarchy contains a cycle');
+      path.add(id);
+      node = nodes.get(String(node.parent_category_id));
+    }
+    for (const id of path) visited.add(id);
+  }
+  res.json({ data: roots });
 }

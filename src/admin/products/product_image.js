@@ -1,6 +1,6 @@
-
 import { S3Client } from '@aws-sdk/client-s3';
 import multer from 'multer';
+import { HttpError } from '../../shared/errors.js';
 
 const storage = multer.memoryStorage();
 
@@ -11,18 +11,12 @@ export const productImageUpload = multer({
     files: 6,
   },
   fileFilter: (req, file, callback) => {
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp',
-    ];
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
 
     if (allowedTypes.includes(file.mimetype)) {
       callback(null, true);
     } else {
-      callback(
-        new Error('Only JPEG, PNG, and WebP images are allowed'),
-      );
+      callback(new HttpError(400, 'Only JPEG, PNG, and WebP images are allowed'));
     }
   },
 }).array('uploadimage', 6);
