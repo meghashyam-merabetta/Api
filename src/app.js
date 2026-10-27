@@ -25,6 +25,7 @@ app.use(
     customLogLevel: (_req, res, error) => {
       if (error || res.statusCode >= 500) return 'error';
       if (res.statusCode >= 400) return 'warn';
+      if (['GET', 'HEAD', 'OPTIONS'].includes(_req.method)) return 'debug';
       return 'info';
     },
     customSuccessMessage: (req, res) =>

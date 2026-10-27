@@ -1,30 +1,23 @@
-import { Op } from 'sequelize';
-import { ProductCatalog } from '../../models/index.js';
+import { productCatalog } from './catalog.js';
 import { HttpError } from '../../shared/errors.js';
 export async function listProducts(req, res) {
-  const { limit, offset, search, category_id } = req.validatedQuery;
-  const where = { active: true };
-  if (search) where['data.name'] = { [Op.iLike]: `%${search}%` };
-  if (category_id)
-    where[Op.or] = [
-      { data: { [Op.contains]: { category_ids: [category_id] } } },
-      { data: { [Op.contains]: { categoryId: category_id } } },
-    ];
-  const { rows, count } = await ProductCatalog.findAndCountAll({
-    where,
-    limit,
-    offset,
-    order: [['id', 'ASC']],
-  });
-  res.json({
-    data: rows.map((row) => ({ ...row.data, id: row.id })),
-    pagination: { total: count, limit, offset, hasMore: offset + rows.length < count },
-  });
+  const catalog = await productCatalog();
+  const { category, brand, q, limit, offset } = req.validatedQuery;
+  const items = catalog.products.filter(
+    (p) =>
+      (!category || p.categoryIds.includes(category)) &&
+      (!brand || p.brandId === brand) &&
+      (!q ||
+        (p.name + ' ' + p.subtitle + ' ' + p.brandName)
+          .toLowerCase()
+          .includes(q.toLowerCase())),
+  );
+  res.json({ data: items.slice(offset, offset + limit), total: items.length });
 }
 export async function getProduct(req, res) {
-  const row = await ProductCatalog.findOne({
-    where: { id: req.validatedParams.id, active: true },
-  });
-  if (!row) throw new HttpError(404, 'Product not found');
-  res.json({ data: { ...row.data, id: row.id } });
+  const product = (await productCatalog()).products.find(
+    (p) => p.id === req.validatedParams.id,
+  );
+  if (!product) throw new HttpError(404, 'Product not found');
+  res.json({ data: product });
 }

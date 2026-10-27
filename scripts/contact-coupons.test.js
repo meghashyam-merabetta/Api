@@ -5,7 +5,7 @@ import request from 'supertest';
 import { contactRoutes } from '../src/app/contact/routes.js';
 import { deliverContactNotification } from '../src/app/contact/notifications.js';
 import { couponRoutes, resolveCoupon } from '../src/app/coupons/routes.js';
-import { couponDiscount, labPricing } from '../src/app/coupons/pricing.js';
+import { couponDiscount, labPricing as configuredLabPricing } from '../src/app/coupons/pricing.js';
 import { buildRouter } from '../src/shared/routes.js';
 import { csrfGuard } from '../src/shared/security.js';
 import { sequelize } from '../src/config/database.js';
@@ -79,3 +79,5 @@ test('contact email goes to support and failed delivery remains retryable', asyn
     fail = true; await deliverContactNotification(transport); assert.equal(outcome, false);
   } finally { sequelize.query = query; sequelize.transaction = transaction; Object.assign(env, config); }
 });
+
+function labPricing(subtotal, coupon) { return configuredLabPricing(subtotal, coupon, {lab_collection_below_paise:59900,lab_collection_charge_paise:15000}); }

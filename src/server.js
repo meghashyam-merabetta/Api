@@ -4,9 +4,9 @@ import { sequelize } from './config/database.js';
 import { logger } from './config/logger.js';
 import { startCatalogSyncWorker } from './app/redcliffe-labs/catalog.js';
 
-import { startContactNotifications } from './app/contact/notifications.js';
+import { startPaymentReconciliation } from './app/orders/reconcile.js';
 await sequelize.authenticate();
-const stopContactNotifications = startContactNotifications();
+const stopPaymentReconciliation = startPaymentReconciliation();
 const stopCatalogSyncWorker = startCatalogSyncWorker();
 const server = app.listen(env.PORT, () =>
   logger.info({ port: env.PORT }, 'API listening'),
@@ -18,7 +18,7 @@ function shutdown(signal) {
   if (stopping) return;
   stopping = true;
   stopCatalogSyncWorker();
-  stopContactNotifications();
+  stopPaymentReconciliation();
   logger.info({ signal }, 'Shutting down');
   const timeout = setTimeout(() => process.exit(1), 10000).unref();
   server.close(async () => {

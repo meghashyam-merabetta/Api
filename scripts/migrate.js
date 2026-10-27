@@ -37,6 +37,21 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/020-email-verification.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/021-phone-verification.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/023-order-inventory.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/024-order-numbers.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/025-order-display-numbers.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/031-lab-markup-capped-at-mrp.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => {
+    await sequelize.query(readFileSync(new URL('../sql/032-product-payment-checkouts.sql', import.meta.url), 'utf8'), { transaction });
+  });
+  await sequelize.transaction(async transaction => {
+    await sequelize.query("SET LOCAL statement_timeout = '120s'", {transaction});
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", {transaction});
+    await sequelize.query(readFileSync(new URL('../sql/028-json-relational-storage.sql', import.meta.url), 'utf8'), {transaction});
+    await sequelize.query(readFileSync(new URL('../sql/029-app-json-scope.sql', import.meta.url), 'utf8'), {transaction});
+  });
+  await sequelize.query(readFileSync(new URL('../sql/030-retain-lab-catalogue.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => { await sequelize.query(readFileSync(new URL('../sql/033-pricing-settings.sql', import.meta.url), 'utf8'), { transaction }); });
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/023-admin-catalog-base.sql', import.meta.url), 'utf8'));

@@ -49,7 +49,7 @@ export async function gatewayRequest(path, customerId, body) {
       redirect: 'error',
       signal: AbortSignal.timeout(12000),
       headers: {
-        Authorization: 'Basic ' + Buffer.from(env.HDFC_API_KEY).toString('base64'),
+        Authorization: 'Basic ' + Buffer.from(env.HDFC_API_KEY + ':').toString('base64'),
         'x-merchantid': env.HDFC_MERCHANT_ID,
         'x-customerid': customerId,
         'x-resellerid': 'hdfc_reseller',
@@ -74,11 +74,16 @@ export async function gatewayRequest(path, customerId, body) {
           ? data.status
           : null,
     });
-    if (!r.ok || !data)
-      throw new HttpError(
+    if (!r.ok || !data) {
+      const error = new HttpError(
         502,
-        'Payment gateway is temporarily unavailable. Your order is saved; check its payment status before trying again.',
+        r.status === 401 || r.status === 403
+          ? 'HDFC payment access was rejected. Please contact support to check the live gateway configuration. Your cart is unchanged.'
+          : 'Payment gateway is temporarily unavailable. Payment has not been confirmed; please try again later.',
       );
+      error.gatewayStatus = r.status;
+      throw error;
+    }
     return data;
   } catch (e) {
     await recordProviderCall({

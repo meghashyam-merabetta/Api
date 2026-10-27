@@ -4,6 +4,7 @@ import { addressSchema } from '../customers/customer.schema.js';
 import { createOrder, getOrder, listOrders } from './orders.controller.js';
 export const orderSchema = z
   .object({
+    paymentMethod: z.enum(['online', 'cod']).default('online'),
     couponCode: couponCodeSchema,
     requestKey: z.string().min(10).max(100),
     items: z
@@ -29,7 +30,7 @@ export const orderRoutes = [
   {
     method: 'get',
     path: '/orders/:id',
-    params: z.object({ id: z.string().regex(/^MB[a-f0-9]{18}$/) }),
+    params: z.object({ id: z.string().regex(/^MB(?:[0-9]{11}|[a-f0-9]{18})$/) }),
     handler: getOrder,
   },
 ];

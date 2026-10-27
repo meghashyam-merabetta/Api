@@ -6,6 +6,7 @@ import { HttpError } from '../../shared/errors.js';
 import { paths, providerRequest, providerSucceeded } from './client.js';
 import { catalogSyncDue } from './catalog-schedule.js';
 import { specimenInstructions } from './instructions.js';
+import { normalizeParameters } from './parameters.js';
 
 export function normalizePackage(row) {
   const code = String(row.code || '').trim();
@@ -47,7 +48,7 @@ export function normalizePackage(row) {
     subtitle: String(row.description || row.name),
     category: categories[0],
     categories,
-    price,
+    price: Math.min(mrp, Math.ceil((Math.round(price * 100) * 110) / 10000)),
     mrp,
     image: 'lab.png',
     rating: '',
@@ -67,8 +68,8 @@ export async function syncPackages() {
   if (syncing) return syncing;
   syncing = (async () => {
     while (true) {
-      const more = await sequelize.transaction(async (transaction) => {
-        const options = { transaction, type: QueryTypes.SELECT };
+      const more = await sequelize.transaction({ logging: false }, async (transaction) => {
+        const options = { transaction, type: QueryTypes.SELECT, logging: false };
         const [lock] = await sequelize.query(
           "SELECT pg_try_advisory_xact_lock(hashtext('redcliffe-catalog')) AS acquired",
           options,
@@ -85,14 +86,14 @@ export async function syncPackages() {
         if (state.status === 'idle' || state.status === 'complete') {
           await sequelize.query(
             "UPDATE lab_catalog_sync SET status='syncing',next_page=1,pages_done=0,processed=0,total=0,started_at=now(),error=NULL,retry_at=NULL WHERE lab_id='redcliffe'",
-            { transaction },
+            { transaction, logging: false },
           );
           state.next_page = 1;
           state.processed = 0;
         }
         // The savepoint lets a failed page roll back without losing earlier pages or its checkpoint.
         try {
-          return await sequelize.transaction({ transaction }, async (pageTransaction) => {
+          return await sequelize.transaction({ transaction, logging: false }, async (pageTransaction) => {
             const page = state.next_page;
             const body = await providerRequest(paths.packages, { page });
             const result = parseCatalogPage(body, page);
@@ -101,19 +102,15 @@ export async function syncPackages() {
               throw new HttpError(502, 'Incomplete catalogue page; previous tests retained.');
             if (rows.length)
               await sequelize.query(
-                "INSERT INTO lab_packages(id,lab_id,package_code,catalog_data,provider_data) SELECT r.id,'redcliffe',r.code,r.data,r.raw FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS r(id text,code text,data jsonb,raw jsonb) ON CONFLICT(id) DO UPDATE SET catalog_data=EXCLUDED.catalog_data,provider_data=EXCLUDED.provider_data,active=true,synced_at=now()",
+                "INSERT INTO lab_packages(id,lab_id,package_code,catalog_data,provider_data) SELECT r.id,'redcliffe',r.code,r.data,r.raw FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS r(id text,code text,data jsonb,raw jsonb) ON CONFLICT(id) DO UPDATE SET catalog_data=lab_packages.catalog_data || jsonb_build_object('price',EXCLUDED.catalog_data->'price','mrp',EXCLUDED.catalog_data->'mrp'),provider_data=EXCLUDED.provider_data,active=true,synced_at=now()",
                 {
                   replacements: { rows: JSON.stringify(rows) },
-                  transaction: pageTransaction,
+                  transaction: pageTransaction, logging: false,
                 },
               );
             if (!result.next && !state.processed && !rows.length)
               throw new HttpError(502, 'Redcliffe has no bookable packages available.');
-            if (!result.next)
-              await sequelize.query(
-                "UPDATE lab_packages SET active=false WHERE lab_id='redcliffe' AND synced_at < (SELECT started_at FROM lab_catalog_sync WHERE lab_id='redcliffe')",
-                { transaction: pageTransaction },
-              );
+            // Absence from a provider run is not a deletion: retain all saved tests.
             await sequelize.query(
               "UPDATE lab_catalog_sync SET status=:status,next_page=:next,pages_done=pages_done+1,processed=processed + :count,total=:total,error=NULL,retry_at=NULL,completed_at=CASE WHEN :done THEN now() ELSE completed_at END WHERE lab_id='redcliffe'",
               {
@@ -124,7 +121,7 @@ export async function syncPackages() {
                   total: Number(body.count) || 0,
                   done: !result.next,
                 },
-                transaction: pageTransaction,
+                transaction: pageTransaction, logging: false,
               },
             );
             return Boolean(result.next);
@@ -132,7 +129,7 @@ export async function syncPackages() {
         } catch (error) {
           await sequelize.query(
             "UPDATE lab_catalog_sync SET status='retrying',error='Catalogue update interrupted. Retrying automatically.',retry_at=now()+interval '30 seconds' WHERE lab_id='redcliffe'",
-            { transaction },
+            { transaction, logging: false },
           );
           logger.warn(
             {
@@ -193,7 +190,7 @@ export async function catalog(_req, res) {
   if (!lab) throw new HttpError(503, 'Redcliffe Labs is currently unavailable.');
   const [rows, states] = await Promise.all([
     sequelize.query(
-      "SELECT catalog_data || jsonb_build_object('catalogType', CASE WHEN provider_data->>'type'='package' THEN 'package' ELSE 'test' END) AS catalog_data, provider_data->>'specimen_instructions' AS specimen_instructions FROM lab_packages WHERE lab_id='redcliffe' AND active ORDER BY (catalog_data->>'price')::numeric ASC, catalog_data->>'name', id",
+      "SELECT catalog_data || jsonb_build_object('catalogType', CASE WHEN provider_data->>'type'='package' THEN 'package' ELSE 'test' END, 'recommendedGender', provider_data->>'recommended_gender', 'recommendedAge', provider_data->>'recommended_age') AS catalog_data, provider_data->>'specimen_instructions' AS specimen_instructions FROM lab_packages WHERE lab_id='redcliffe' AND active ORDER BY (catalog_data->>'price')::numeric ASC, catalog_data->>'name', id",
       { type: QueryTypes.SELECT },
     ),
     sequelize.query(
@@ -229,9 +226,9 @@ export async function parameters(req, res) {
     );
   }
   res.json({
-    data: body.data.map((group) => ({
-      name: String(group.name || ''),
-      parameters: (group.package_detail || []).map((item) => String(item.name || '')),
-    })),
+    data: normalizeParameters(body),
+    parameter: Number.isInteger(Number(body.parameter)) && body.parameter !== null && body.parameter !== undefined && Number(body.parameter) >= 0
+      ? Number(body.parameter)
+      : normalizeParameters(body).reduce((total, group) => total + group.parameters.length, 0),
   });
 }

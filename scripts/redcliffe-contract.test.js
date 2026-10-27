@@ -36,7 +36,14 @@ test('five India dates, serviceability and slot capacity are authoritative', () 
 });
 test('packages use mapped prices and the thyroid image; invalid prices are rejected', () => {
   const raw = { code: 'PKG1', name: 'Test', parameters: 3, package_center_prices: { offer_price: 100, package_price: 200 } };
-  assert.equal(normalizePackage(raw).price, 100); assert.equal(normalizePackage(raw).image, 'lab.png');
+  assert.equal(normalizePackage(raw).price, 110); assert.equal(normalizePackage(raw).image, 'lab.png');
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 199, package_price: 300 } }).price, 219);
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 100.01, package_price: 200 } }).price, 111);
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 100, package_price: 110 } }).price, 110);
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 199, package_price: 210 } }).price, 210);
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 100, package_price: 100 } }).price, 100);
+  assert.equal(normalizePackage({ ...raw, package_center_prices: { offer_price: 100, package_price: 105.50 } }).price, 105.50);
+  assert.equal(normalizePackage(raw).mrp, 200);
   assert.throws(() => normalizePackage({ ...raw, package_center_prices: { offer_price: -10, package_price: 200 } }), /invalid package/);
 });
 test('provider client uses only fixed endpoints and a private Key header', async () => {
