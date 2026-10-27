@@ -55,6 +55,7 @@ async function check(label, route, args, expected, required = true) {
   }
   for (const image of Array.isArray(body?.data) ? body.data : [])
     if (image.s3_key) keys.add(image.s3_key);
+  if (body?.data?.s3_key) keys.add(body.data.s3_key);
   const result = { test: label, status, expected, passed: status === expected };
   if (status !== expected) result.error = body?.error ?? body?.message ?? raw;
   results.push(result);
@@ -194,7 +195,7 @@ try {
     200,
   );
   assert.equal(replaced.data.id, first.id);
-  assert.equal(replaced.data.s3_key, first.s3_key);
+  assert.notEqual(replaced.data.s3_key, first.s3_key);
   assert.notEqual(replaced.data.image_url, first.image_url);
   await readImage(
     'Read replacement URL and compare bytes',

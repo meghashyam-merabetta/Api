@@ -1,77 +1,23 @@
+import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
+import { validateImageContent } from '../../shared/image-signature.js';
+import { catalogMutation, sendMutation, fingerprint } from './idempotency.js';
 import {
-  MAX_PRODUCT_IMAGES,
-  PRODUCT_IMAGE_SLOTS as IMAGE_SLOTS,
-} from '../../shared/product-images.js';
+  stageImage,
+  reserveImage,
+  imageUrl,
+  queueImageCleanup,
+} from './image-storage.js';
 import { publishProductCatalog, deactivateProductCatalog } from './catalog-publisher.js';
-import { randomUUID } from 'node:crypto';
 import { normalizePricing, storedCatalogFields } from './catalog-fields.js';
 import { Op } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
-import { productImageUpload, s3 } from './product_image.js';
-import {
-  PutObjectCommand,
-  DeleteObjectCommand,
-  HeadObjectCommand,
-} from '@aws-sdk/client-s3';
+import { productImageUpload } from './product_image.js';
 
 const Product = models.product;
 const Category = models.category;
 const ProductCategory = models.productCategory;
-
-const S3_BUCKET = 'prod-merabetta';
-const S3_REGION = 'ap-south-1';
-
-function getProductImageKey(productId, slot, mimetype = 'image/jpeg') {
-  const normalizedSlot = String(slot).toLowerCase();
-
-  if (!IMAGE_SLOTS.includes(normalizedSlot)) {
-    throw new HttpError(400, 'Invalid image slot');
-  }
-
-  const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[
-    mimetype
-  ];
-  return `upload/${productId}${normalizedSlot}.${extension}`;
-}
-
-function getProductImageUrl(s3Key) {
-  return `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com/${s3Key}`;
-}
-
-function getSlotFromKey(productId, s3Key) {
-  const escapedProductId = String(productId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  const match = String(s3Key).match(
-    new RegExp(`^upload/${escapedProductId}([a-z])\\.(?:jpg|png|webp)$`),
-  );
-
-  return match && IMAGE_SLOTS.includes(match[1]) ? match[1] : null;
-}
-
-async function s3ObjectExists(key) {
-  try {
-    await s3.send(
-      new HeadObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: key,
-      }),
-    );
-
-    return true;
-  } catch (error) {
-    if (
-      error?.$metadata?.httpStatusCode === 404 ||
-      error?.name === 'NotFound' ||
-      error?.name === 'NoSuchKey'
-    ) {
-      return false;
-    }
-
-    throw error;
-  }
-}
 
 async function findProduct(productId, transaction) {
   const product = await Product.findByPk(productId, {
@@ -265,7 +211,7 @@ export async function getProduct(req, res) {
 export async function createProduct(req, res) {
   const data = normalizePricing(req.validated);
 
-  const product = await sequelize.transaction(async (transaction) => {
+  const result = await catalogMutation(req, req.validated, 201, async (transaction) => {
     const categoryIds = data.category_ids ?? [];
     const primaryCategoryId = data.primary_category_id ?? null;
 
@@ -302,7 +248,7 @@ export async function createProduct(req, res) {
     return created;
   });
 
-  res.status(201).json({ data: product });
+  sendMutation(res, result);
 }
 
 export async function updateProduct(req, res) {
@@ -398,6 +344,11 @@ export async function deleteProduct(req, res) {
   await sequelize.transaction(async (transaction) => {
     const product = await findProduct(req.validatedParams.productId, transaction);
     await deactivateProductCatalog(product.product_id, transaction);
+    const images = await models.productImage.findAll({
+      where: { product_id: product.product_id },
+      transaction,
+    });
+    for (const image of images) await queueImageCleanup(image.s3_key, transaction);
     await product.destroy({ transaction });
   });
   res.status(204).end();
@@ -410,14 +361,22 @@ export async function deleteProduct(req, res) {
 export function uploadImagesProduct(req, res, next) {
   productImageUpload(req, res, async (error) => {
     if (error) return next(new HttpError(400, error.message));
-    const createdKeys = [];
     try {
       const files = req.files ?? [];
       if (!files.length)
         throw new HttpError(400, 'Upload at least one image using uploadimage');
       if (files.reduce((total, file) => total + file.size, 0) > 10 * 1024 * 1024)
         throw new HttpError(400, 'Total image size cannot exceed 10 MB');
-      const savedImages = await sequelize.transaction(async (transaction) => {
+      files.forEach(validateImageContent);
+      const payload = files.map((file) => ({
+        type: file.mimetype,
+        hash: fingerprint(file.buffer.toString('base64')),
+      }));
+      // Reserve journals before acquiring a transaction connection (avoids pool starvation).
+      const reserved = [];
+      for (const file of files)
+        reserved.push(await reserveImage(req.validatedParams.productId, file));
+      const result = await catalogMutation(req, payload, 201, async (transaction) => {
         const product = await findProduct(req.validatedParams.productId, transaction);
         const existingImages = await models.productImage.findAll({
           where: { product_id: product.product_id },
@@ -428,38 +387,15 @@ export function uploadImagesProduct(req, res, next) {
             400,
             `A product can have a maximum of ${MAX_PRODUCT_IMAGES} images`,
           );
-        const occupiedSlots = new Set(
-          existingImages
-            .map((image) => getSlotFromKey(product.product_id, image.s3_key))
-            .filter(Boolean),
-        );
-        const availableSlots = IMAGE_SLOTS.filter((slot) => !occupiedSlots.has(slot));
         const saved = [];
         let hasPrimary = existingImages.some((image) => image.is_primary);
         for (const [index, file] of files.entries()) {
-          const key = getProductImageKey(
-            product.product_id,
-            availableSlots[index],
-            file.mimetype,
-          );
-          if (await s3ObjectExists(key))
-            throw new HttpError(409, 'Image slot already exists in storage');
-          await s3.send(
-            new PutObjectCommand({
-              Bucket: S3_BUCKET,
-              Key: key,
-              Body: file.buffer,
-              ContentType: file.mimetype,
-              CacheControl: 'no-cache',
-              IfNoneMatch: '*',
-            }),
-          );
-          createdKeys.push(key);
+          const { key, journal } = await stageImage(reserved[index], file, transaction);
           saved.push(
             await models.productImage.create(
               {
                 product_id: product.product_id,
-                image_url: getProductImageUrl(key),
+                image_url: imageUrl(key),
                 s3_key: key,
                 sort_order:
                   Math.max(-1, ...existingImages.map((image) => image.sort_order)) +
@@ -470,18 +406,14 @@ export function uploadImagesProduct(req, res, next) {
               { transaction },
             ),
           );
+          await journal.destroy({ transaction });
           hasPrimary = true;
         }
         await publishProductCatalog(product.product_id, transaction);
         return saved;
       });
-      res.status(201).json({ data: savedImages });
+      sendMutation(res, result);
     } catch (uploadError) {
-      await Promise.allSettled(
-        createdKeys.map((Key) =>
-          s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key })),
-        ),
-      );
       next(uploadError);
     }
   });
@@ -536,17 +468,15 @@ export async function setPrimaryProductImage(req, res) {
 
 export function replaceProductImage(req, res, next) {
   productImageUpload(req, res, async (error) => {
-    if (error) {
-      return next(new HttpError(400, error.message));
-    }
-
+    if (error) return next(new HttpError(400, error.message));
     try {
       const { productId, imageId } = req.validatedParams;
-
       const files = req.files ?? [];
       if (files.length !== 1)
         throw new HttpError(400, 'Upload exactly one image using uploadimage');
       const file = files[0];
+      validateImageContent(file);
+      const reserved = await reserveImage(productId, file);
       const updated = await sequelize.transaction(async (transaction) => {
         await findProduct(productId, transaction);
         const image = await models.productImage.findOne({
@@ -554,27 +484,16 @@ export function replaceProductImage(req, res, next) {
           transaction,
         });
         if (!image) throw new HttpError(404, 'Product image not found');
-        // Retain the storage key and refresh the URL to invalidate browser caches.
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: S3_BUCKET,
-            Key: image.s3_key,
-            Body: file.buffer,
-            ContentType: file.mimetype,
-            CacheControl: 'no-cache',
-          }),
-        );
-        const updatedImage = await image.update(
-          { image_url: `${getProductImageUrl(image.s3_key)}?v=${randomUUID()}` },
-          { transaction },
-        );
+        const { key, journal } = await stageImage(reserved, file, transaction);
+        await queueImageCleanup(image.s3_key, transaction);
+        await image.update({ s3_key: key, image_url: imageUrl(key) }, { transaction });
+        await journal.destroy({ transaction });
         await publishProductCatalog(productId, transaction);
-        return updatedImage;
+        return image;
       });
-
-      return res.json({ data: updated });
+      res.json({ data: updated });
     } catch (replaceError) {
-      return next(replaceError);
+      next(replaceError);
     }
   });
 }
@@ -592,8 +511,8 @@ export async function deleteProductImage(req, res) {
       transaction,
     });
     if (!image) throw new HttpError(404, 'Product image not found');
-    // Keep the product locked through storage deletion so a new upload cannot reuse its slot.
-    await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: image.s3_key }));
+    // Commit cleanup intent with the DB deletion; storage failures cannot break live references.
+    await queueImageCleanup(image.s3_key, transaction);
     await image.destroy({ transaction });
     if (image.is_primary) {
       const nextImage = await models.productImage.findOne({

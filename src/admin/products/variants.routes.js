@@ -1,3 +1,4 @@
+import { catalogMutation, sendMutation } from './idempotency.js';
 import { publishProductCatalog } from './catalog-publisher.js';
 import { z } from 'zod';
 import { Op } from 'sequelize';
@@ -87,48 +88,56 @@ async function product(id, transaction) {
 }
 async function saveVariant(req, res) {
   const { productId, variantId } = req.validatedParams;
-  const result = await sequelize.transaction(async (transaction) => {
-    const parent = await product(productId, transaction);
-    if (parent.product_type !== 'variable')
-      throw new HttpError(400, 'Variants require a variable product');
-    const existing = variantId
-      ? await ProductVariant.findOne({
-          where: { id: variantId, product_id: productId },
+  const result = await catalogMutation(
+    req,
+    req.validated,
+    variantId ? 200 : 201,
+    async (transaction) => {
+      const parent = await product(productId, transaction);
+      if (parent.product_type !== 'variable')
+        throw new HttpError(400, 'Variants require a variable product');
+      const existing = variantId
+        ? await ProductVariant.findOne({
+            where: { id: variantId, product_id: productId },
+            transaction,
+          })
+        : null;
+      if (variantId && !existing) throw new HttpError(404, 'Product variant not found');
+      const data = normalizePricing(req.validated, existing?.toJSON());
+      if (data.attributes) {
+        const definitions = await VariantAttribute.findAll({
+          where: { name: { [Op.in]: Object.keys(data.attributes) } },
+          order: [['id', 'ASC']],
           transaction,
-        })
-      : null;
-    if (variantId && !existing) throw new HttpError(404, 'Product variant not found');
-    const data = normalizePricing(req.validated, existing?.toJSON());
-    if (data.attributes) {
-      const definitions = await VariantAttribute.findAll({
-        where: { name: { [Op.in]: Object.keys(data.attributes) } },
-        order: [['id', 'ASC']],
+          lock: transaction.LOCK.SHARE,
+        });
+        if (
+          definitions.length !== Object.keys(data.attributes).length ||
+          definitions.some((def) => !def.values.includes(data.attributes[def.name]))
+        )
+          throw new HttpError(400, 'Unknown variant attribute or option');
+      }
+      const duplicate = await ProductVariant.findOne({
+        where: {
+          product_id: productId,
+          attributes: { [Op.eq]: data.attributes ?? existing.attributes },
+          ...(variantId ? { id: { [Op.ne]: variantId } } : {}),
+        },
         transaction,
-        lock: transaction.LOCK.SHARE,
       });
-      if (
-        definitions.length !== Object.keys(data.attributes).length ||
-        definitions.some((def) => !def.values.includes(data.attributes[def.name]))
-      )
-        throw new HttpError(400, 'Unknown variant attribute or option');
-    }
-    const duplicate = await ProductVariant.findOne({
-      where: {
-        product_id: productId,
-        attributes: { [Op.eq]: data.attributes ?? existing.attributes },
-        ...(variantId ? { id: { [Op.ne]: variantId } } : {}),
-      },
-      transaction,
-    });
-    if (duplicate)
-      throw new HttpError(409, 'This variant attribute combination already exists');
-    const row = existing
-      ? await existing.update(data, { transaction })
-      : await ProductVariant.create({ ...data, product_id: productId }, { transaction });
-    await publishProductCatalog(productId, transaction);
-    return row;
-  });
-  res.status(variantId ? 200 : 201).json({ data: result });
+      if (duplicate)
+        throw new HttpError(409, 'This variant attribute combination already exists');
+      const row = existing
+        ? await existing.update(data, { transaction })
+        : await ProductVariant.create(
+            { ...data, product_id: productId },
+            { transaction },
+          );
+      await publishProductCatalog(productId, transaction);
+      return row;
+    },
+  );
+  sendMutation(res, result);
 }
 export const variantAttributeRoutes = [
   {

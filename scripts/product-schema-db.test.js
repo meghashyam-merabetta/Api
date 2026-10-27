@@ -95,6 +95,7 @@ test(
       await sql('025-admin-catalog-compatibility.sql');
       await sql('026-product-schema-alignment.sql');
       await sql('022-product-images.sql');
+      await sql('027-admin-catalog-reliability.sql');
       await sql('018-contact-coupons.sql');
       await sql('012-third-party-api-logs.sql');
       await sql('019-provider-response-body.sql');
