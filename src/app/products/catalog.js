@@ -1,3 +1,4 @@
+import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
@@ -5,7 +6,9 @@ import { env } from '../../config/env.js';
 export function productImageUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   const base = env.PRODUCT_IMAGE_BASE_URL.replace(/\/+$/, '');
-  return base ? base + '/' + path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/') : path;
+  return base
+    ? base + '/' + path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/')
+    : path;
 }
 export function categoryIcon(name) {
   const rules = [
@@ -53,7 +56,14 @@ export async function productCatalog(transaction) {
     if (!prior || (prior.stock === 0 && row.stock > 0)) grouped.set(row.variant_id, row);
   }
   const products = [...grouped.values()].map((row) => {
-    const images = [...new Set(row.images.map((i) => i.url).filter(Boolean).map(productImageUrl))].slice(0, 6);
+    const images = [
+      ...new Set(
+        row.images
+          .map((i) => i.url)
+          .filter(Boolean)
+          .map(productImageUrl),
+      ),
+    ].slice(0, MAX_PRODUCT_IMAGES);
     const categoryIds = new Set(row.categories.map((c) => c.id));
     for (const id of [...categoryIds]) {
       let parent = categories.find((c) => c.id === id)?.parentId;

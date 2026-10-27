@@ -66,7 +66,7 @@ Each record has its own ID, SKU, stock, optional prices, and `display_name` (for
 
 ## Product images
 
-Existing image endpoints use multipart field `uploadimage`: JPEG, PNG, and WebP are accepted. Maximum six images per product, 5 MB per file, 10 MB total per upload. New uploads retain A–F slots with the matching file extension and coexist with legacy image records. A batch is saved transactionally, and newly uploaded objects are removed if its database writes fail. Product-level locks serialize image writes and primary-image selection.
+Existing image endpoints use multipart field `uploadimage`: JPEG, PNG, and WebP are accepted. Maximum 10 images per product, 5 MB per file, 10 MB total per upload. New uploads retain A–J slots with the matching file extension and coexist with legacy image records. A batch is saved transactionally, and newly uploaded objects are removed if its database writes fail. Product-level locks serialize image writes and primary-image selection.
 
 Product list/detail and `GET /products/:productId/images` return stored image metadata and URLs, ordered primary first. `PATCH /products/:productId/images/:imageId/primary` now validates both IDs. Replacement refreshes the URL query parameter to avoid stale browser images. Publishing and other product PATCH operations preserve existing image records.
 

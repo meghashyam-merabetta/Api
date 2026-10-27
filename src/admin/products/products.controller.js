@@ -1,3 +1,7 @@
+import {
+  MAX_PRODUCT_IMAGES,
+  PRODUCT_IMAGE_SLOTS as IMAGE_SLOTS,
+} from '../../shared/product-images.js';
 import { publishProductCatalog, deactivateProductCatalog } from './catalog-publisher.js';
 import { randomUUID } from 'node:crypto';
 import { normalizePricing, storedCatalogFields } from './catalog-fields.js';
@@ -18,8 +22,6 @@ const ProductCategory = models.productCategory;
 
 const S3_BUCKET = 'prod-merabetta';
 const S3_REGION = 'ap-south-1';
-const IMAGE_SLOTS = ['a', 'b', 'c', 'd', 'e', 'f'];
-const MAX_PRODUCT_IMAGES = 6;
 
 function getProductImageKey(productId, slot, mimetype = 'image/jpeg') {
   const normalizedSlot = String(slot).toLowerCase();
@@ -42,10 +44,10 @@ function getSlotFromKey(productId, s3Key) {
   const escapedProductId = String(productId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const match = String(s3Key).match(
-    new RegExp(`^upload/${escapedProductId}([a-f])\\.(?:jpg|png|webp)$`),
+    new RegExp(`^upload/${escapedProductId}([a-z])\\.(?:jpg|png|webp)$`),
   );
 
-  return match ? match[1] : null;
+  return match && IMAGE_SLOTS.includes(match[1]) ? match[1] : null;
 }
 
 async function s3ObjectExists(key) {
@@ -422,7 +424,10 @@ export function uploadImagesProduct(req, res, next) {
           transaction,
         });
         if (existingImages.length + files.length > MAX_PRODUCT_IMAGES)
-          throw new HttpError(400, 'A product can have a maximum of 6 images');
+          throw new HttpError(
+            400,
+            `A product can have a maximum of ${MAX_PRODUCT_IMAGES} images`,
+          );
         const occupiedSlots = new Set(
           existingImages
             .map((image) => getSlotFromKey(product.product_id, image.s3_key))

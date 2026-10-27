@@ -329,6 +329,76 @@ test(
       } finally {
         models.productImage.create = originalCreate;
       }
+      // Ten stored images, uploads above six files, and A-J slot reuse.
+      let fillRequest = request(app).post(`/products/${id}/images`);
+      for (let index = 0; index < 9; index++) {
+        fillRequest = fillRequest.attach('uploadimage', Buffer.from(`fixture-${index}`), {
+          filename: `${index}.jpg`,
+          contentType: 'image/jpeg',
+        });
+      }
+      const filled = await fillRequest;
+      assert.equal(filled.status, 201, JSON.stringify(filled.body));
+      assert.equal(filled.body.data.length, 9);
+      assert.equal(objects.size, 10);
+      assert.ok(filled.body.data.at(-1).s3_key.endsWith(`${id}j.jpg`));
+      const fullList = (await request(app).get(`/products/${id}/images`)).body.data;
+      assert.equal(fullList.length, 10);
+      assert.equal(fullList.filter((image) => image.is_primary).length, 1);
+      assert.equal(
+        (await request(app).get(`/products/${id}`)).body.data.images.length,
+        10,
+      );
+      const rejected = await request(app)
+        .post(`/products/${id}/images`)
+        .attach('uploadimage', Buffer.from('extra'), {
+          filename: 'extra.png',
+          contentType: 'image/png',
+        });
+      assert.equal(rejected.status, 400);
+      assert.match(rejected.body.error, /maximum of 10 images/);
+      assert.equal(objects.size, 10);
+      const lastImage = filled.body.data.at(-1);
+      assert.equal(
+        (await request(app).delete(`/products/${id}/images/${lastImage.id}`)).status,
+        204,
+      );
+      const reused = await request(app)
+        .post(`/products/${id}/images`)
+        .attach('uploadimage', Buffer.from('reuse-j'), {
+          filename: 'reuse.png',
+          contentType: 'image/png',
+        });
+      assert.equal(reused.status, 201, JSON.stringify(reused.body));
+      assert.ok(reused.body.data[0].s3_key.endsWith(`${id}j.png`));
+      assert.equal(
+        (await request(app).get(`/products/${id}/images`)).body.data.length,
+        10,
+      );
+      const currentImages = (await request(app).get(`/products/${id}/images`)).body.data;
+      for (const image of currentImages) {
+        assert.equal(
+          (await request(app).delete(`/products/${id}/images/${image.id}`)).status,
+          204,
+        );
+      }
+      assert.equal(objects.size, 0);
+      let tenFileRequest = request(app).post(`/products/${id}/images`);
+      for (let index = 0; index < 10; index++) {
+        tenFileRequest = tenFileRequest.attach(
+          'uploadimage',
+          Buffer.from(`ten-${index}`),
+          {
+            filename: `${index}.png`,
+            contentType: 'image/png',
+          },
+        );
+      }
+      const tenFiles = await tenFileRequest;
+      assert.equal(tenFiles.status, 201, JSON.stringify(tenFiles.body));
+      assert.equal(tenFiles.body.data.length, 10);
+      assert.equal(tenFiles.body.data.filter((image) => image.is_primary).length, 1);
+      assert.equal(objects.size, 10);
       assert.equal((await request(app).delete(`/products/${id}`)).status, 204);
       assert.equal(await models.productVariant.count(), 0);
       assert.equal(
