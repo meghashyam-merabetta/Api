@@ -51,6 +51,9 @@ try {
     await sequelize.query(readFileSync(new URL('../sql/029-app-json-scope.sql', import.meta.url), 'utf8'), {transaction});
   });
   await sequelize.query(readFileSync(new URL('../sql/030-retain-lab-catalogue.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => {
+    await sequelize.query(readFileSync(new URL('../sql/034-retain-active-lab-tests.sql', import.meta.url), 'utf8'), { transaction });
+  });
   await sequelize.transaction(async transaction => { await sequelize.query(readFileSync(new URL('../sql/033-pricing-settings.sql', import.meta.url), 'utf8'), { transaction }); });
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
