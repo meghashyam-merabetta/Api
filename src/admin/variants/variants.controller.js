@@ -40,16 +40,23 @@ export async function saveVariant(req, res) {
     req.validated,
     variantId ? 200 : 201,
     async (transaction) => {
-      const parent = await product(productId, transaction);
-      if (parent.product_type !== 'variable')
-        throw new HttpError(400, 'Variants require a variable product');
-      const existing = variantId
+      await product(productId, transaction);
+      let existing = variantId
         ? await ProductVariant.findOne({
             where: { id: variantId, product_id: productId },
             transaction,
           })
         : null;
       if (variantId && !existing) throw new HttpError(404, 'Product variant not found');
+      if (!existing && req.validated.attributes) {
+        existing = await ProductVariant.findOne({
+          where: {
+            product_id: productId,
+            attributes: { [Op.eq]: req.validated.attributes },
+          },
+          transaction,
+        });
+      }
       const data = normalizePricing(req.validated, existing?.toJSON());
       if (data.attributes) {
         const definitions = await VariantAttribute.findAll({
@@ -68,7 +75,7 @@ export async function saveVariant(req, res) {
         where: {
           product_id: productId,
           attributes: { [Op.eq]: data.attributes ?? existing.attributes },
-          ...(variantId ? { id: { [Op.ne]: variantId } } : {}),
+          ...(existing ? { id: { [Op.ne]: existing.id } } : {}),
         },
         transaction,
       });

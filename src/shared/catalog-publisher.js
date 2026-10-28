@@ -26,7 +26,8 @@ export async function publishProductCatalog(productId, transaction) {
   const base = product.toJSON();
   const categoryIds = categories.map((row) => String(row.category_id));
   const primary = categories.find((row) => row.is_primary)?.category_id;
-  const items = product.product_type === 'variable' ? variants : [null];
+  const items =
+    product.product_type === 'variable' || variants.length > 0 ? variants : [null];
   for (const variant of items) {
     const id = variant ? `variant:${variant.id}` : `product:${productId}`;
     const details = variant?.toJSON();
