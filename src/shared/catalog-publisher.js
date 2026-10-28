@@ -42,6 +42,7 @@ export async function publishProductCatalog(productId, transaction) {
     const data = {
       ...base,
       ...details,
+      barcode: details?.barcode ?? base.barcode ?? null,
       id,
       name: variant
         ? `${product.product_name} - ${variant.display_name || variant.sku}`

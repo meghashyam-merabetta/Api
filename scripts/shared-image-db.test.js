@@ -59,6 +59,7 @@ test(
         '026-product-schema-alignment.sql',
         '022-product-images.sql',
         '027-admin-catalog-reliability.sql',
+        '035-product-specification-fields.sql',
       ]) {
         await sequelize.query(
           await readFile(new URL(`../sql/${file}`, import.meta.url), 'utf8'),
