@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  normalizePricing,
-  effectivePrice,
-} from '../src/admin/products/catalog-fields.js';
+import { normalizePricing, effectivePrice } from '../src/shared/catalog-fields.js';
 import {
   createProductSchema,
   updateProductSchema,

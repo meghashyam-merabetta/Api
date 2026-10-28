@@ -10,7 +10,7 @@ import { models } from '../src/models/index.js';
 import { env } from '../src/config/env.js';
 import { buildRouter } from '../src/shared/routes.js';
 import { productsRoutes } from '../src/admin/products/products.routes.js';
-import { variantAttributeRoutes } from '../src/admin/products/variants.routes.js';
+import { variantAttributeRoutes } from '../src/admin/variants/variants.routes.js';
 import { productRoutes } from '../src/app/products/products.routes.js';
 import {
   createOrder,

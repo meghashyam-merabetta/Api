@@ -1,4 +1,4 @@
-import { models } from '../../models/index.js';
+import { models } from '../models/index.js';
 import { effectivePrice } from './catalog-fields.js';
 
 // All callers hold the parent product lock, so checkout and admin writes agree.

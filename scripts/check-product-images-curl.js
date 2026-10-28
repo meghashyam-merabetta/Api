@@ -12,7 +12,7 @@ import { app } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { sequelize } from '../src/config/database.js';
 import { models } from '../src/models/index.js';
-import { s3 } from '../src/admin/products/product_image.js';
+import { s3 } from '../src/shared/image_upload.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const run = promisify(execFile);

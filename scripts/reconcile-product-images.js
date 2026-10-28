@@ -1,5 +1,5 @@
 import { sequelize } from '../src/config/database.js';
-import { reconcileProductImages } from '../src/admin/products/image-reconciliation.js';
+import { reconcileProductImages } from '../src/shared/product-image-reconciliation.js';
 
 try {
   const unknown = process.argv.slice(2).filter((value) => value !== '--apply');

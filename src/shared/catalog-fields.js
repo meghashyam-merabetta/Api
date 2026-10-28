@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { HttpError } from '../../shared/errors.js';
+import { HttpError } from './errors.js';
 
 const money = z.number().finite().min(0).max(999999999.99).multipleOf(0.01);
 const percent = z.number().finite().min(0).max(100).multipleOf(0.01);

@@ -1,4 +1,4 @@
-import { startImageCleanupWorker } from './admin/products/image-storage.js';
+import { startImageCleanupWorker } from './shared/image-storage.js';
 import { app } from './app.js';
 import { env } from './config/env.js';
 import { sequelize } from './config/database.js';

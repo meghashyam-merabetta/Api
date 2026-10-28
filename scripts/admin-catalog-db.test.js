@@ -1,5 +1,5 @@
 import { png, jpeg, webp } from '../test-support/image-fixtures.js';
-import { processImageCleanup } from '../src/admin/products/image-storage.js';
+import { processImageCleanup } from '../src/shared/image-storage.js';
 import { ProductImageCleanup } from '../src/models/catalog-reliability.model.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,8 +13,8 @@ import { buildRouter } from '../src/shared/routes.js';
 import { productsRoutes } from '../src/admin/products/products.routes.js';
 import { categoriesRoutes } from '../src/admin/categories/categories.routes.js';
 import { brandsRoutes } from '../src/admin/brands/brands.routes.js';
-import { variantAttributeRoutes } from '../src/admin/products/variants.routes.js';
-import { s3 } from '../src/admin/products/product_image.js';
+import { variantAttributeRoutes } from '../src/admin/variants/variants.routes.js';
+import { s3 } from '../src/shared/image_upload.js';
 
 test(
   'catalog migrations and admin HTTP contracts against isolated PostgreSQL',

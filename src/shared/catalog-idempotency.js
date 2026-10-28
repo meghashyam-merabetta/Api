@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { sequelize } from '../../config/database.js';
-import { AdminCatalogRequest } from '../../models/catalog-reliability.model.js';
-import { HttpError } from '../../shared/errors.js';
+import { sequelize } from '../config/database.js';
+import { AdminCatalogRequest } from '../models/catalog-reliability.model.js';
+import { HttpError } from './errors.js';
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);

@@ -5,21 +5,67 @@ import {
   DeleteObjectCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
-import { sequelize } from '../../config/database.js';
-import { ProductImageCleanup } from '../../models/catalog-reliability.model.js';
-import { models } from '../../models/index.js';
-import { logger } from '../../config/logger.js';
-import { HttpError } from '../../shared/errors.js';
-import { s3 } from './product_image.js';
+import { sequelize } from '../config/database.js';
+import { ProductImageCleanup } from '../models/catalog-reliability.model.js';
+import { models } from '../models/index.js';
+import { logger } from '../config/logger.js';
+import { HttpError } from './errors.js';
+import { s3 } from './image_upload.js';
 
 export const IMAGE_BUCKET = 'prod-merabetta';
 const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 export const imageUrl = (key) =>
   `https://${IMAGE_BUCKET}.s3.ap-south-1.amazonaws.com/${key}`;
 export const managedImageKey = (key) =>
-  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|products\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
+  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
     key,
   );
+
+export const managedProductImageKey = (key) =>
+  managedImageKey(key) &&
+  (key.startsWith('upload/products/') || /^upload\/[0-9]+[a-j]\./.test(key));
+
+export function managedImageKeyFromUrl(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.origin !== new URL(imageUrl('')).origin) return null;
+    const key = decodeURIComponent(url.pathname.slice(1));
+    return managedImageKey(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function queueImageUrlCleanup(value, transaction) {
+  const key = managedImageKeyFromUrl(value);
+  if (key) await queueImageCleanup(key, transaction);
+}
+
+export async function isImageReferenced(key, transaction) {
+  if (await models.productImage.count({ where: { s3_key: key }, transaction }))
+    return true;
+  const url = imageUrl(key);
+  for (const [model, field] of [
+    [models.category, 'category_image'],
+    [models.brand, 'image_url'],
+  ]) {
+    if (
+      await model.count({
+        where: {
+          [Op.or]: [
+            { [field]: url },
+            { [field]: { [Op.like]: `${url}?%` } },
+            { [field]: { [Op.like]: `${url}#%` } },
+          ],
+        },
+        transaction,
+      })
+    )
+      return true;
+  }
+  return false;
+}
 
 export async function objectExists(key) {
   try {
@@ -41,8 +87,14 @@ export async function queueImageCleanup(key, transaction) {
 
 // A committed journal exists before S3 is touched. A crash/rollback leaves retryable cleanup.
 // New keys are immutable: replacement never overwrites the currently referenced object.
-export async function reserveImage(productId, file) {
-  const key = `upload/products/${productId}/${randomUUID()}.${extension[file.mimetype]}`;
+export async function reserveImage(resource, resourceId, file) {
+  if (
+    !['products', 'categories', 'brands'].includes(resource) ||
+    !/^[1-9][0-9]*$/.test(String(resourceId))
+  ) {
+    throw new HttpError(400, 'Invalid image resource');
+  }
+  const key = `upload/${resource}/${resourceId}/${randomUUID()}.${extension[file.mimetype]}`;
   await ProductImageCleanup.create({
     s3_key: key,
     not_before: new Date(Date.now() + 3600000),
@@ -83,12 +135,7 @@ export async function processImageCleanup({ limit = 20 } = {}) {
       if (!job) return false;
       try {
         // Protect referenced objects, including after an ambiguous commit outcome.
-        if (
-          !(await models.productImage.count({
-            where: { s3_key: job.s3_key },
-            transaction,
-          }))
-        )
+        if (!(await isImageReferenced(job.s3_key, transaction)))
           await s3.send(
             new DeleteObjectCommand({ Bucket: IMAGE_BUCKET, Key: job.s3_key }),
           );
@@ -106,10 +153,7 @@ export async function processImageCleanup({ limit = 20 } = {}) {
           },
           { transaction },
         );
-        logger.warn(
-          { key: job.s3_key, error: error.message },
-          'Product image cleanup deferred',
-        );
+        logger.warn({ key: job.s3_key, error: error.message }, 'Image cleanup deferred');
       }
       return true;
     });

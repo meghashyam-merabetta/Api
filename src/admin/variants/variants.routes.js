@@ -1,0 +1,91 @@
+import {
+  listVariantAttributes,
+  createVariantAttribute,
+  updateVariantAttribute,
+  deleteVariantAttribute,
+  getProductVariant,
+  listProductVariants,
+  saveVariant,
+  deleteProductVariant,
+} from './variants.controller.js';
+import {
+  createVariantAttributeSchema,
+  variantAttributeParamsSchema,
+  variantProductParamsSchema,
+  productVariantParamsSchema,
+  listVariantQuerySchema,
+  createVariantSchema,
+  updateVariantAttributeSchema,
+  updateVariantSchema,
+} from './variants.schema.js';
+export const variantAttributeRoutes = [
+  {
+    method: 'get',
+    path: '/',
+    auth: true,
+    query: listVariantQuerySchema,
+    handler: listVariantAttributes,
+  },
+  {
+    method: 'post',
+    path: '/',
+    auth: true,
+    schema: createVariantAttributeSchema,
+    handler: createVariantAttribute,
+  },
+  {
+    method: 'patch',
+    path: '/:attributeId',
+    auth: true,
+    params: variantAttributeParamsSchema,
+    schema: updateVariantAttributeSchema,
+    handler: updateVariantAttribute,
+  },
+  {
+    method: 'delete',
+    path: '/:attributeId',
+    auth: true,
+    params: variantAttributeParamsSchema,
+    handler: deleteVariantAttribute,
+  },
+];
+export const productVariantRoutes = [
+  {
+    method: 'get',
+    path: '/:productId/variants/:variantId',
+    auth: true,
+    params: productVariantParamsSchema,
+    handler: getProductVariant,
+  },
+  {
+    method: 'get',
+    path: '/:productId/variants',
+    auth: true,
+    params: variantProductParamsSchema,
+    query: listVariantQuerySchema,
+    handler: listProductVariants,
+  },
+  {
+    method: 'post',
+    path: '/:productId/variants',
+    auth: true,
+    params: variantProductParamsSchema,
+    schema: createVariantSchema,
+    handler: saveVariant,
+  },
+  {
+    method: 'patch',
+    path: '/:productId/variants/:variantId',
+    auth: true,
+    params: productVariantParamsSchema,
+    schema: updateVariantSchema,
+    handler: saveVariant,
+  },
+  {
+    method: 'delete',
+    path: '/:productId/variants/:variantId',
+    auth: true,
+    params: productVariantParamsSchema,
+    handler: deleteProductVariant,
+  },
+];

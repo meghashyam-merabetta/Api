@@ -1,19 +1,25 @@
 import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
-import { validateImageContent } from '../../shared/image-signature.js';
-import { catalogMutation, sendMutation, fingerprint } from './idempotency.js';
+import {
+  catalogMutation,
+  sendMutation,
+  fingerprint,
+} from '../../shared/catalog-idempotency.js';
 import {
   stageImage,
   reserveImage,
   imageUrl,
   queueImageCleanup,
-} from './image-storage.js';
-import { publishProductCatalog, deactivateProductCatalog } from './catalog-publisher.js';
-import { normalizePricing, storedCatalogFields } from './catalog-fields.js';
+} from '../../shared/image-storage.js';
+import {
+  publishProductCatalog,
+  deactivateProductCatalog,
+} from '../../shared/catalog-publisher.js';
+import { normalizePricing, storedCatalogFields } from '../../shared/catalog-fields.js';
 import { Op } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
-import { productImageUpload } from './product_image.js';
+import { productImageUpload } from '../../shared/image_upload.js';
 
 const Product = models.product;
 const Category = models.category;
@@ -363,11 +369,6 @@ export function uploadImagesProduct(req, res, next) {
     if (error) return next(new HttpError(400, error.message));
     try {
       const files = req.files ?? [];
-      if (!files.length)
-        throw new HttpError(400, 'Upload at least one image using uploadimage');
-      if (files.reduce((total, file) => total + file.size, 0) > 10 * 1024 * 1024)
-        throw new HttpError(400, 'Total image size cannot exceed 10 MB');
-      files.forEach(validateImageContent);
       const payload = files.map((file) => ({
         type: file.mimetype,
         hash: fingerprint(file.buffer.toString('base64')),
@@ -375,7 +376,9 @@ export function uploadImagesProduct(req, res, next) {
       // Reserve journals before acquiring a transaction connection (avoids pool starvation).
       const reserved = [];
       for (const file of files)
-        reserved.push(await reserveImage(req.validatedParams.productId, file));
+        reserved.push(
+          await reserveImage('products', req.validatedParams.productId, file),
+        );
       const result = await catalogMutation(req, payload, 201, async (transaction) => {
         const product = await findProduct(req.validatedParams.productId, transaction);
         const existingImages = await models.productImage.findAll({
@@ -475,8 +478,7 @@ export function replaceProductImage(req, res, next) {
       if (files.length !== 1)
         throw new HttpError(400, 'Upload exactly one image using uploadimage');
       const file = files[0];
-      validateImageContent(file);
-      const reserved = await reserveImage(productId, file);
+      const reserved = await reserveImage('products', productId, file);
       const updated = await sequelize.transaction(async (transaction) => {
         await findProduct(productId, transaction);
         const image = await models.productImage.findOne({

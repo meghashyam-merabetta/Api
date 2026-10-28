@@ -50,7 +50,9 @@ export function csrfGuard(req, res, next) {
   const imageMultipart =
     (req.method === 'POST' && /^\/api\/admin\/products\/[^/]+\/images$/.test(req.path)) ||
     (req.method === 'PUT' &&
-      /^\/api\/admin\/products\/[^/]+\/images\/[^/]+$/.test(req.path));
+      /^\/api\/admin\/products\/[^/]+\/images\/[^/]+$/.test(req.path)) ||
+    (['POST', 'PUT'].includes(req.method) &&
+      /^\/api\/admin\/(?:categories|brands)\/[^/]+\/image$/.test(req.path));
   if (imageMultipart) {
     if (!req.is('multipart/form-data'))
       throw new HttpError(415, 'Content-Type must be multipart/form-data');

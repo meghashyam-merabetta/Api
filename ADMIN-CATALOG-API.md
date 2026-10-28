@@ -1,5 +1,7 @@
 # Admin catalog corrections
 
+Shared product/category/brand file-upload endpoints and frontend examples are documented in [IMAGE-UPLOAD-API.md](IMAGE-UPLOAD-API.md).
+
 The full core-schema mapping, variant barcode/weight fields, customer catalog and checkout behavior are documented in [PRODUCT-SCHEMA.md](PRODUCT-SCHEMA.md).
 
 These APIs use the existing admin authentication under `/api/admin`. For existing catalog deployments, run `npm run db:migrate:catalog-reliability` before deploying this reliability update. The original catalog bootstrap is `npm run db:migrate`. The original bootstrap adds catalog base tables, existing product detail columns, and variant tables. The reliability migration adds only request-replay and cleanup tables; existing catalog rows are retained. Migrations are not run on application startup.

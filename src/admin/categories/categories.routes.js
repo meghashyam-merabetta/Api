@@ -1,4 +1,7 @@
 import {
+  getCategoryImage,
+  uploadCategoryImage,
+  deleteCategoryImage,
   categoryTree,
   listCategories,
   getCategory,
@@ -16,6 +19,34 @@ import {
 } from './categories.schema.js';
 
 export const categoriesRoutes = [
+  {
+    method: 'get',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: getCategoryImage,
+  },
+  {
+    method: 'post',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: uploadCategoryImage,
+  },
+  {
+    method: 'put',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: uploadCategoryImage,
+  },
+  {
+    method: 'delete',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: deleteCategoryImage,
+  },
   {
     method: 'get',
     path: '/tree',

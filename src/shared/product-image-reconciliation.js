@@ -1,11 +1,12 @@
 import { ListObjectsV2Command } from '@aws-sdk/client-s3';
-import { sequelize } from '../../config/database.js';
-import { models } from '../../models/index.js';
-import { s3 } from './product_image.js';
+import { sequelize } from '../config/database.js';
+import { models } from '../models/index.js';
+import { s3 } from './image_upload.js';
 import {
   IMAGE_BUCKET,
-  managedImageKey,
+  managedProductImageKey,
   objectExists,
+  isImageReferenced,
   queueImageCleanup,
   processImageCleanup,
 } from './image-storage.js';
@@ -63,12 +64,12 @@ export async function reconcileProductImages({
     );
     for (const object of page.Contents ?? []) {
       if (
-        !managedImageKey(object.Key) ||
+        !managedProductImageKey(object.Key) ||
         !object.LastModified ||
         Date.now() - new Date(object.LastModified).getTime() < minimumAgeMs
       )
         continue;
-      if (await models.productImage.count({ where: { s3_key: object.Key } })) continue;
+      if (await isImageReferenced(object.Key)) continue;
       report.orphans.push(object.Key);
       if (apply) {
         await queueImageCleanup(object.Key);

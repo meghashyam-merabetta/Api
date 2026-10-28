@@ -7,14 +7,14 @@ import { app } from '../src/app.js';
 import { sequelize } from '../src/config/database.js';
 import { models } from '../src/models/index.js';
 import { ProductImageCleanup } from '../src/models/catalog-reliability.model.js';
-import { s3 } from '../src/admin/products/product_image.js';
+import { s3 } from '../src/shared/image_upload.js';
 import {
   processImageCleanup,
   queueImageCleanup,
   reserveImage,
   stageImage,
-} from '../src/admin/products/image-storage.js';
-import { reconcileProductImages } from '../src/admin/products/image-reconciliation.js';
+} from '../src/shared/image-storage.js';
+import { reconcileProductImages } from '../src/shared/product-image-reconciliation.js';
 import { env } from '../src/config/env.js';
 import { png } from '../test-support/image-fixtures.js';
 
@@ -316,7 +316,7 @@ test(
       await t.test(
         'cleanup workers skip an in-flight upload journal and recover it after rollback',
         async () => {
-          const key = await reserveImage(id, { mimetype: 'image/png' });
+          const key = await reserveImage('products', id, { mimetype: 'image/png' });
           await ProductImageCleanup.update(
             { not_before: new Date(0) },
             { where: { s3_key: key } },
