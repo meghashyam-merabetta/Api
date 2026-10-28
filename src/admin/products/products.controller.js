@@ -264,14 +264,6 @@ export async function updateProduct(req, res) {
 
     const data = normalizePricing(req.validated, existing.toJSON());
     if (Object.hasOwn(data, 'brand_id')) await validateBrand(data.brand_id, transaction);
-    if (
-      data.product_type === 'simple' &&
-      (await models.productVariant.count({
-        where: { product_id: existing.product_id },
-        transaction,
-      }))
-    )
-      throw new HttpError(409, 'Remove variants before changing to a simple product');
 
     const fields = [
       ...storedCatalogFields,
