@@ -10,6 +10,7 @@ export function reportUrl(value) {
       !u.username &&
       !u.password &&
       (u.hostname === 'redcliffelabsbackend.s3.amazonaws.com' ||
+        u.hostname === 'staticlims.s3.amazonaws.com' ||
         u.hostname === 'redcliffelabsbackend.s3.ap-south-1.amazonaws.com' ||
         u.hostname === 'redcliffelabs.com' ||
         u.hostname.endsWith('.redcliffelabs.com'))
@@ -21,6 +22,7 @@ export function reportUrl(value) {
 }
 export function reportsFromBooking(remote) {
   const entries = Array.isArray(remote?.report) ? [...remote.report] : [];
+  if (Array.isArray(remote?.booking_report)) entries.push(...remote.booking_report);
   for (const value of [
     remote?.report_link,
     remote?.Report_url,
@@ -29,14 +31,17 @@ export function reportsFromBooking(remote) {
     typeof remote?.booking_report === 'string' ? remote.booking_report : null,
   ])
     if (value) entries.push({ report_link: value });
-  return entries.flatMap((item) => {
-    const url = reportUrl(item.report_link);
+  const validEntries = entries.filter(item => reportUrl(typeof item === 'string' ? item : item?.report_link || item?.report));
+  const reportId = item => /^\d+$/.test(String(item?.id ?? '')) ? BigInt(item.id) : -1n;
+  validEntries.sort((a, b) => reportId(a) > reportId(b) ? -1 : reportId(a) < reportId(b) ? 1 : 0);
+  return validEntries.slice(0, 1).flatMap((item) => {
+    const url = reportUrl(typeof item === 'string' ? item : item?.report_link || item?.report);
     return url
       ? [
           {
             id: createHash('sha256').update(url).digest('hex').slice(0, 24),
             url,
-            label: item.status === 'partial' ? 'Partial report' : 'Lab report',
+            label: (item.status || item.report_status) === 'partial' ? 'Partial report' : 'Lab report',
             patientId: String(item.patient_id || ''),
           },
         ]

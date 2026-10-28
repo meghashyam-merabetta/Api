@@ -30,8 +30,8 @@ export function verifiedStatus(row, data) {
       502,
       'Payment details could not be verified. Please contact support.',
     );
-  // A sandbox/simulated CHARGED response is not proof of a real customer payment.
-  if (data.status === 'CHARGED' && !isLivePayment(row, data)) return 'FAILED';
+  // Only a non-production API may settle explicitly sandbox-created checkouts.
+  if (data.status === 'CHARGED' && !isLivePayment(row, data) && !isSandboxPayment(row, data)) return 'FAILED';
   return data.status === 'CHARGED'
     ? 'CHARGED'
     : ['AUTHENTICATION_FAILED', 'AUTHORIZATION_FAILED', 'JUSPAY_DECLINED'].includes(
@@ -39,6 +39,15 @@ export function verifiedStatus(row, data) {
         )
       ? 'FAILED'
       : 'PENDING';
+}
+export function isSandboxPayment(row, data) {
+  if (env.NODE_ENV === 'production' || env.HDFC_ENVIRONMENT !== 'sandbox'
+    || row.payload?.paymentEnvironment !== 'sandbox'
+    || typeof data.txn_id !== 'string' || !data.txn_id.trim()) return false;
+  try {
+    const url = new URL(row.payment_url);
+    return url.origin === 'https://smartgateway.hdfcuat.bank.in' && !url.username && !url.password;
+  } catch { return false; }
 }
 export function isLivePayment(row, data) {
   const gateway = String(data.txn_detail?.gateway || data.gateway || '').trim().toUpperCase();
@@ -121,7 +130,7 @@ export async function applyPaymentStatus(id, data) {
       status === 'CHARGED'
         ? stock === 'review'
           ? 'Payment received - stock review'
-          : 'Processing'
+          : 'Confirmed'
         : status === 'FAILED'
           ? 'Payment failed'
           : 'Payment pending';
@@ -224,7 +233,7 @@ export async function createOrder(req, res) {
       id,
       kind: 'products',
       date: new Date().toISOString(),
-      status: cod ? 'Processing' : 'Payment pending',
+      status: cod ? 'Confirmed' : 'Payment pending',
       paymentMethod: cod ? 'cod' : 'online',
       paymentEnvironment: cod ? null : env.HDFC_ENVIRONMENT,
       paymentStatus: cod ? 'Cash on delivery' : 'Pending',
