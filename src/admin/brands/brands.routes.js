@@ -1,107 +1,82 @@
-import { z } from 'zod';
-import { Op } from 'sequelize';
-import { Brand, Product } from '../../models/index.js';
-import { sequelize } from '../../config/database.js';
-import { HttpError } from '../../shared/errors.js';
-const fields = {
-  brand_name: z.string().trim().min(1).max(150),
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .max(180)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  description: z.string().trim().max(10000).nullable().optional(),
-  image_url: z.url().nullable().optional(),
-  is_active: z.boolean().optional(),
-};
-const create = z.object(fields).strict();
-const update = create
-  .partial()
-  .refine((value) => Object.keys(value).length > 0, 'Provide at least one field');
-const params = z.object({ brandId: z.coerce.number().int().positive() }).strict();
-const query = z
-  .object({
-    limit: z.coerce.number().int().min(1).max(100).default(20),
-    offset: z.coerce.number().int().min(0).default(0),
-    search: z.string().trim().min(1).max(150).optional(),
-    is_active: z.enum(['true', 'false']).optional(),
-    all: z.enum(['true', 'false']).optional(),
-  })
-  .strict();
-async function find(id, transaction) {
-  const brand = await Brand.findByPk(id, {
-    transaction,
-    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
-  });
-  if (!brand) throw new HttpError(404, 'Brand not found');
-  return brand;
-}
+import {
+  listBrands,
+  getBrand,
+  createBrand,
+  updateBrand,
+  deleteBrand,
+  getBrandImage,
+  uploadBrandImage,
+  deleteBrandImage,
+} from './brands.controller.js';
+import {
+  createBrandSchema,
+  updateBrandSchema,
+  brandIdParamsSchema,
+  listBrandsQuerySchema,
+} from './brands.schema.js';
 export const brandsRoutes = [
   {
     method: 'get',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: getBrandImage,
+  },
+  {
+    method: 'post',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: uploadBrandImage,
+  },
+  {
+    method: 'put',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: uploadBrandImage,
+  },
+  {
+    method: 'delete',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: deleteBrandImage,
+  },
+  {
+    method: 'get',
     path: '/',
-    query,
-    handler: async (req, res) => {
-      const { limit, offset, search, is_active, all } = req.validatedQuery;
-      const where = {};
-      if (search) where.brand_name = { [Op.iLike]: `%${search}%` };
-      if (is_active !== undefined) where.is_active = is_active === 'true';
-      const { rows, count } = await Brand.findAndCountAll({
-        where,
-        ...(all === 'true' ? {} : { limit, offset }),
-        order: [
-          ['brand_name', 'ASC'],
-          ['brand_id', 'ASC'],
-        ],
-      });
-      res.json({
-        data: rows,
-        pagination: {
-          total: count,
-          limit: all === 'true' ? count : limit,
-          offset: all === 'true' ? 0 : offset,
-          hasMore: all === 'true' ? false : offset + rows.length < count,
-        },
-      });
-    },
+    query: listBrandsQuerySchema,
+    auth: true,
+    handler: listBrands,
   },
   {
     method: 'get',
     path: '/:brandId',
-    params,
-    handler: async (req, res) =>
-      res.json({ data: await find(req.validatedParams.brandId) }),
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: getBrand,
   },
   {
     method: 'post',
     path: '/',
-    schema: create,
-    handler: async (req, res) =>
-      res.status(201).json({ data: await Brand.create(req.validated) }),
+    auth: true,
+    schema: createBrandSchema,
+    handler: createBrand,
   },
   {
     method: 'patch',
     path: '/:brandId',
-    params,
-    schema: update,
-    handler: async (req, res) =>
-      res.json({
-        data: await (await find(req.validatedParams.brandId)).update(req.validated),
-      }),
+    params: brandIdParamsSchema,
+    auth: true,
+    schema: updateBrandSchema,
+    handler: updateBrand,
   },
   {
     method: 'delete',
     path: '/:brandId',
-    params,
-    handler: async (req, res) => {
-      await sequelize.transaction(async (transaction) => {
-        const brand = await find(req.validatedParams.brandId, transaction);
-        if (await Product.count({ where: { brand_id: brand.brand_id }, transaction }))
-          throw new HttpError(409, 'Cannot delete a brand assigned to products');
-        await brand.destroy({ transaction });
-      });
-      res.status(204).end();
-    },
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: deleteBrand,
   },
 ];

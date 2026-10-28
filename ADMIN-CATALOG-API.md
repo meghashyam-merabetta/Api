@@ -1,8 +1,10 @@
 # Admin catalog corrections
 
+Shared product/category/brand file-upload endpoints and frontend examples are documented in [IMAGE-UPLOAD-API.md](IMAGE-UPLOAD-API.md).
+
 The full core-schema mapping, variant barcode/weight fields, customer catalog and checkout behavior are documented in [PRODUCT-SCHEMA.md](PRODUCT-SCHEMA.md).
 
-These APIs use the existing admin authentication under `/api/admin`. Run `npm run db:migrate` before deploying the updated backend. The migration adds the catalog base tables when absent, product detail columns, and variant tables; existing catalog rows are retained. Migrations are not run on application startup.
+These APIs use the existing admin authentication under `/api/admin`. For existing catalog deployments, run `npm run db:migrate:catalog-reliability` before deploying this reliability update. The original catalog bootstrap is `npm run db:migrate`. The original bootstrap adds catalog base tables, existing product detail columns, and variant tables. The reliability migration adds only request-replay and cleanup tables; existing catalog rows are retained. Migrations are not run on application startup.
 
 ## Categories
 
@@ -66,11 +68,13 @@ Each record has its own ID, SKU, stock, optional prices, and `display_name` (for
 
 ## Product images
 
-Existing image endpoints use multipart field `uploadimage`: JPEG, PNG, and WebP are accepted. Maximum six images per product, 5 MB per file, 10 MB total per upload. New uploads retain A–F slots with the matching file extension and coexist with legacy image records. A batch is saved transactionally, and newly uploaded objects are removed if its database writes fail. Product-level locks serialize image writes and primary-image selection.
+Image endpoints use multipart field `uploadimage`. JPEG, PNG, and WebP content signatures must match their declared MIME types. Limits remain 10 images per product, 5 MiB per file, and 10 MiB total per upload request. The frontend may retain its stricter six-image addition policy.
 
-Product list/detail and `GET /products/:productId/images` return stored image metadata and URLs, ordered primary first. `PATCH /products/:productId/images/:imageId/primary` now validates both IDs. Replacement refreshes the URL query parameter to avoid stale browser images. Publishing and other product PATCH operations preserve existing image records.
+New uploads use immutable UUID keys under `upload/products/:productId/`; existing A–J keys remain readable. Replacement preserves the image ID but returns a new `s3_key` and `image_url`. Always consume the returned metadata rather than deriving a key or adding a query parameter to an old URL.
 
-Storage continues using the existing `prod-merabetta` bucket in `ap-south-1` and direct S3 URLs. The bucket must permit the intended image reads. Live curl tests verified image upload, public reads, replacement bytes, primary selection and deletion against the configured bucket. See [verification/product-images-curl.md](verification/product-images-curl.md) for commands and results. The approved compatibility migration `025-admin-catalog-compatibility.sql` was applied to the configured database, and product-detail image retrieval passed the live curl test. Isolated integration tests mock storage.
+Product list/detail and `GET /products/:productId/images` return image metadata ordered primary first. Replacement uploads the new object before switching the database reference. Image and product deletion commit database changes together with durable storage-cleanup jobs. S3 deletion runs afterward and retries on failures. A 204 means database deletion and cleanup intent committed; physical storage removal is eventual.
+
+Storage uses `prod-merabetta` in `ap-south-1` and direct S3 URLs. The bucket must permit intended image reads, including the new key prefix. Current verification uses isolated PostgreSQL and mocked S3; live proxy/cookie/HTTPS and IAM behavior remain deployment checks. See [catalog reliability operations](CATALOG-RELIABILITY.md) for migration, retry headers, recovery, and reconciliation.
 
 ## Frontend work
 

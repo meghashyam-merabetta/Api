@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { catalogFields } from './catalog-fields.js';
+import { catalogFields } from '../../shared/catalog-fields.js';
 
 const productStatusSchema = z.enum(['draft', 'active', 'inactive', 'archived']);
 

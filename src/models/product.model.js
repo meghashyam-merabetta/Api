@@ -1,6 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { effectivePrice } from '../admin/products/catalog-fields.js';
+import { effectivePrice } from '../shared/catalog-fields.js';
 
 export const Product = sequelize.define(
   'Product',

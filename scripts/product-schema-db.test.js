@@ -10,7 +10,7 @@ import { models } from '../src/models/index.js';
 import { env } from '../src/config/env.js';
 import { buildRouter } from '../src/shared/routes.js';
 import { productsRoutes } from '../src/admin/products/products.routes.js';
-import { variantAttributeRoutes } from '../src/admin/products/variants.routes.js';
+import { variantAttributeRoutes } from '../src/admin/variants/variants.routes.js';
 import { productRoutes } from '../src/app/products/products.routes.js';
 import {
   createOrder,
@@ -95,6 +95,7 @@ test(
       await sql('025-admin-catalog-compatibility.sql');
       await sql('026-product-schema-alignment.sql');
       await sql('022-product-images.sql');
+      await sql('027-admin-catalog-reliability.sql');
       await sql('018-contact-coupons.sql');
       await sql('012-third-party-api-logs.sql');
       await sql('019-provider-response-body.sql');

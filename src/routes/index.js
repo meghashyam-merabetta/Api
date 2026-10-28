@@ -1,5 +1,5 @@
 import { brandsRoutes } from '../admin/brands/brands.routes.js';
-import { variantAttributeRoutes } from '../admin/products/variants.routes.js';
+import { variantAttributeRoutes } from '../admin/variants/variants.routes.js';
 import { contactRoutes } from '../app/contact/routes.js';
 import { bannerRoutes } from '../app/banners/routes.js';
 import { couponRoutes } from '../app/coupons/routes.js';

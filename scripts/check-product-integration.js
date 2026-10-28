@@ -1,3 +1,4 @@
+import { MAX_PRODUCT_IMAGES } from '../src/shared/product-images.js';
 // Read-only catalogue checks, plus rollback-only availability/price checks.
 import assert from 'node:assert/strict';
 import {
@@ -16,14 +17,21 @@ try {
   for (const p of catalog.products) {
     assert.ok(p.mrp >= p.price && p.price > 0);
     assert.ok(catalog.categories.some((c) => c.id === p.categoryId));
-    assert.ok(p.images.length <= 6);
+    assert.ok(p.images.length <= MAX_PRODUCT_IMAGES);
     const images = await sequelize.query(
       'SELECT image_url FROM product_images WHERE product_id=:id ORDER BY is_primary DESC,sort_order,id',
       { replacements: { id: p.productId }, type: QueryTypes.SELECT },
     );
     assert.deepEqual(
       p.images,
-      [...new Set(images.map((i) => i.image_url).filter(Boolean).map(productImageUrl))].slice(0, 6),
+      [
+        ...new Set(
+          images
+            .map((i) => i.image_url)
+            .filter(Boolean)
+            .map(productImageUrl),
+        ),
+      ].slice(0, MAX_PRODUCT_IMAGES),
     );
   }
   const p = catalog.products.find((p) => p.available);

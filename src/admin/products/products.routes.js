@@ -1,4 +1,4 @@
-import { productVariantRoutes } from './variants.routes.js';
+import { productVariantRoutes } from '../variants/variants.routes.js';
 import {
   listProducts,
   getProduct,

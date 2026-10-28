@@ -1,4 +1,4 @@
-﻿import { readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { sequelize } from '../src/config/database.js';
 import { seedMasters } from './seed-masters.js';
 import { Lab } from '../src/models/lab.model.js';
@@ -66,4 +66,5 @@ try {
   await sequelize.query(
   readFileSync(new URL('../sql/022-product-images.sql', import.meta.url), 'utf8'),
 );
+  await sequelize.query(readFileSync(new URL('../sql/027-admin-catalog-reliability.sql', import.meta.url), 'utf8'));
 } finally { await sequelize.close(); }

@@ -12,7 +12,7 @@ import { app } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { sequelize } from '../src/config/database.js';
 import { models } from '../src/models/index.js';
-import { s3 } from '../src/admin/products/product_image.js';
+import { s3 } from '../src/shared/image_upload.js';
 import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 const run = promisify(execFile);
@@ -55,6 +55,7 @@ async function check(label, route, args, expected, required = true) {
   }
   for (const image of Array.isArray(body?.data) ? body.data : [])
     if (image.s3_key) keys.add(image.s3_key);
+  if (body?.data?.s3_key) keys.add(body.data.s3_key);
   const result = { test: label, status, expected, passed: status === expected };
   if (status !== expected) result.error = body?.error ?? body?.message ?? raw;
   results.push(result);
@@ -194,7 +195,7 @@ try {
     200,
   );
   assert.equal(replaced.data.id, first.id);
-  assert.equal(replaced.data.s3_key, first.s3_key);
+  assert.notEqual(replaced.data.s3_key, first.s3_key);
   assert.notEqual(replaced.data.image_url, first.image_url);
   await readImage(
     'Read replacement URL and compare bytes',
