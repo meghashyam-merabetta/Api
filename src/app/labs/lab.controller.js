@@ -1,4 +1,5 @@
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
+import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 
 export async function lablisting(req, res) {
@@ -35,8 +36,13 @@ export async function lablisting(req, res) {
     offset: (page - 1) * limit,
   });
 
+  const counts = rows.length ? await sequelize.query(
+    'SELECT lab_id,count(*)::int AS count FROM lab_packages WHERE active AND lab_id IN (:ids) GROUP BY lab_id',
+    { replacements: { ids: rows.map(row => row.id) }, type: QueryTypes.SELECT },
+  ) : [];
+  const totals = new Map(counts.map(row => [row.lab_id, row.count]));
   res.json({
-    data: rows,
+    data: rows.map(row => ({ ...row.toJSON(), testCount: totals.get(row.id) || 0 })),
     pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
   });
 }
