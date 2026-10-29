@@ -55,6 +55,10 @@ try {
     await sequelize.query(readFileSync(new URL('../sql/034-retain-active-lab-tests.sql', import.meta.url), 'utf8'), { transaction });
   });
   await sequelize.transaction(async transaction => { await sequelize.query(readFileSync(new URL('../sql/033-pricing-settings.sql', import.meta.url), 'utf8'), { transaction }); });
+  await sequelize.transaction(async transaction => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+    await sequelize.query(readFileSync(new URL('../sql/036-random-order-number-width.sql', import.meta.url), 'utf8'), { transaction });
+  });
   console.log('Customer schema ready.');
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/023-admin-catalog-base.sql', import.meta.url), 'utf8'));

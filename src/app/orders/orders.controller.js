@@ -11,6 +11,10 @@ import { resolveCoupon } from '../coupons/routes.js';
 import { couponDiscount } from '../coupons/pricing.js';
 import { reserveStock, settleStock } from './inventory.js';
 import { sellableProduct } from '../products/catalog.js';
+import { paymentReturnUrl } from '../hdfc/return-token.js';
+export function isTestCheckout(row) {
+  return row.payload?.paymentEnvironment === 'sandbox' || row.payload?.isTestOrder === true;
+}
 export function paise(value) {
   const text = String(value);
   if (!/^\d+(\.\d{1,2})?$/.test(text)) throw new HttpError(422, 'Invalid amount');
@@ -30,7 +34,7 @@ export function verifiedStatus(row, data) {
       502,
       'Payment details could not be verified. Please contact support.',
     );
-  // Only a non-production API may settle explicitly sandbox-created checkouts.
+  // Gateway environment, not Node runtime mode, separates UAT from live payments.
   if (data.status === 'CHARGED' && !isLivePayment(row, data) && !isSandboxPayment(row, data)) return 'FAILED';
   return data.status === 'CHARGED'
     ? 'CHARGED'
@@ -41,10 +45,11 @@ export function verifiedStatus(row, data) {
       : 'PENDING';
 }
 export function isSandboxPayment(row, data) {
-  if (env.NODE_ENV === 'production' || env.HDFC_ENVIRONMENT !== 'sandbox'
+  if (env.HDFC_ENVIRONMENT !== 'sandbox'
     || row.payload?.paymentEnvironment !== 'sandbox'
     || typeof data.txn_id !== 'string' || !data.txn_id.trim()) return false;
   try {
+    if (!row.payment_url && row.payment_status === 'CHARGED') return true;
     const url = new URL(row.payment_url);
     return url.origin === 'https://smartgateway.hdfcuat.bank.in' && !url.username && !url.password;
   } catch { return false; }
@@ -64,6 +69,7 @@ export function isLivePayment(row, data) {
 async function promoteCheckout(id, transaction) {
   await sequelize.query(
     `INSERT INTO orders SELECT * FROM product_checkouts WHERE id=:id AND payment_status IN ('CHARGED','COD')
+       AND COALESCE(payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(payload->>'isTestOrder','false')<>'true'
      ON CONFLICT(id) DO UPDATE SET payment_status=EXCLUDED.payment_status,stock_state=EXCLUDED.stock_state,
        payload=EXCLUDED.payload,payment_url=EXCLUDED.payment_url,transaction_id=EXCLUDED.transaction_id,updated_at=EXCLUDED.updated_at`,
     { replacements: { id }, transaction },
@@ -84,10 +90,13 @@ export async function findOrder(id, customer) {
   if (!row) throw new HttpError(404, 'Order not found');
   return row;
 }
-export async function syncOrder(row) {
+export async function syncOrder(row, { force = false } = {}) {
   if (row.payment_status === 'COD') return row;
-  if (row.payment_status === 'CHARGED') return row;
+  if (row.payment_status === 'CHARGED' && !force) return row;
   const data = await gatewayRequest('/orders/' + row.id, row.customer_id);
+  const status = verifiedStatus(row, data);
+  if (row.payment_status === 'CHARGED' && status !== 'CHARGED')
+    throw new HttpError(409, 'Payment status changed. Please contact support before fulfilment.');
   await applyPaymentStatus(row.id, data);
 
   return findOrder(row.id, row.customer_id);
@@ -104,7 +113,12 @@ export async function applyPaymentStatus(id, data) {
     const status = verifiedStatus(row, data);
     if (row.payment_status === 'CHARGED') return row;
     let stock = row.stock_state;
-    if (status === 'CHARGED') {
+    const testOrder = isTestCheckout(row);
+    if (testOrder && stock === 'reserved' && status !== 'PENDING') {
+      await settleStock(row.id, false, transaction);
+      stock = 'released';
+    }
+    if (status === 'CHARGED' && !testOrder) {
       if (stock === 'released') {
         try {
           await reserveStock(row.id, row.payload.items, transaction);
@@ -136,7 +150,7 @@ export async function applyPaymentStatus(id, data) {
           : 'Payment pending';
     const payment =
       status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending';
-    const payload = { ...row.payload, status: data.status === 'CHARGED' && status === 'FAILED' ? 'Payment not verified as live' : label, paymentStatus: payment };
+    const payload = { ...row.payload, isTestOrder: testOrder, fulfillmentBlocked: testOrder, status: testOrder && status === 'CHARGED' ? 'Test payment successful - not for fulfilment' : data.status === 'CHARGED' && status === 'FAILED' ? 'Payment not verified' : label, paymentStatus: payment };
     const url =
       status === 'FAILED' || status === 'CHARGED'
         ? null
@@ -155,7 +169,7 @@ export async function applyPaymentStatus(id, data) {
         transaction,
       },
     );
-    if (status === 'CHARGED') await promoteCheckout(id, transaction);
+    if (status === 'CHARGED' && !testOrder) await promoteCheckout(id, transaction);
     return {
       ...row,
       payment_status: status,
@@ -169,7 +183,10 @@ export function orderView(row) {
   return {
     ...row.payload,
     orderNumber: row.order_number || row.id,
-    paymentReturnUrl: env.HDFC_RETURN_URL || null,
+    isTestOrder: isTestCheckout(row),
+    fulfillmentBlocked: isTestCheckout(row),
+    paymentReturnUrl: row.payload?.paymentReturnUrl || env.HDFC_RETURN_URL || null,
+    receiptUrl: row.payment_status === 'CHARGED' ? paymentReturnUrl(row) : null,
     paymentUrl: ['CHARGED', 'FAILED'].includes(row.payment_status)
       ? null
       : paymentUrl(row.payment_url),
@@ -178,6 +195,7 @@ export function orderView(row) {
 export async function createOrder(req, res) {
   const b = req.validated;
   const cod = b.paymentMethod === 'cod';
+  const testOrder = env.HDFC_ENVIRONMENT === 'sandbox';
   if (!cod) requireGateway();
   const customer = req.credential;
   if (!customer.phone || !customer.email)
@@ -232,10 +250,13 @@ export async function createOrder(req, res) {
     const payload = {
       id,
       kind: 'products',
+      paymentReturnUrl: paymentReturnUrl({ id }),
       date: new Date().toISOString(),
-      status: cod ? 'Confirmed' : 'Payment pending',
+      status: cod ? (testOrder ? 'Test order - not for fulfilment' : 'Confirmed') : 'Payment pending',
       paymentMethod: cod ? 'cod' : 'online',
-      paymentEnvironment: cod ? null : env.HDFC_ENVIRONMENT,
+      paymentEnvironment: env.HDFC_ENVIRONMENT,
+      isTestOrder: testOrder,
+      fulfillmentBlocked: testOrder,
       paymentStatus: cod ? 'Cash on delivery' : 'Pending',
       total: total / 100,
       subtotal: subtotal / 100,
@@ -268,18 +289,18 @@ export async function createOrder(req, res) {
           key: b.requestKey,
           fingerprint,
           amount: total,
-          stock: 'reserved',
+          stock: testOrder ? 'released' : 'reserved',
           payload: JSON.stringify(payload),
         },
         transaction,
       },
     );
-    await reserveStock(id, items, transaction);
+    if (!testOrder) await reserveStock(id, items, transaction);
     if (cod) {
-      await settleStock(id, true, transaction);
-      await sequelize.query("UPDATE product_checkouts SET payment_status='COD',session_state='not_required',stock_state='deducted' WHERE id=:id", { replacements: { id }, transaction });
+      if (!testOrder) await settleStock(id, true, transaction);
+      await sequelize.query("UPDATE product_checkouts SET payment_status='COD',session_state='not_required',stock_state=:stock WHERE id=:id", { replacements: { id, stock: testOrder ? 'released' : 'deducted' }, transaction });
     }
-    if (cod) await promoteCheckout(id, transaction);
+    if (cod && !testOrder) await promoteCheckout(id, transaction);
     row = {
       id,
       customer_id: customer.id,
@@ -318,7 +339,7 @@ export async function createOrder(req, res) {
       payment_page_client_id: env.HDFC_CLIENT_ID,
       action: 'paymentPage',
       currency: 'INR',
-      return_url: env.HDFC_RETURN_URL,
+      return_url: row.payload.paymentReturnUrl || env.HDFC_RETURN_URL,
       description: 'Merabetta product order',
       first_name: customer.firstName || '',
       last_name: customer.lastName || '',
@@ -348,7 +369,12 @@ export async function getOrder(req, res) {
 }
 export async function listOrders(req, res) {
   const rows = await sequelize.query(
-    "SELECT * FROM orders WHERE customer_id=:id AND payment_status IN ('CHARGED','COD') ORDER BY created_at DESC",
+    `SELECT * FROM orders WHERE customer_id=:id AND payment_status IN ('CHARGED','COD')
+       AND COALESCE(payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(payload->>'isTestOrder','false')<>'true'
+     UNION ALL
+     SELECT * FROM product_checkouts WHERE customer_id=:id AND payment_status IN ('CHARGED','COD')
+       AND (payload->>'paymentEnvironment'='sandbox' OR payload->>'isTestOrder'='true')
+     ORDER BY created_at DESC`,
     { replacements: { id: req.credential.id }, type: QueryTypes.SELECT },
   );
   res.json({ data: rows.map(orderView) });

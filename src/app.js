@@ -16,6 +16,8 @@ import { apiRoutes } from './routes/index.js';
 import { HttpError } from './shared/errors.js';
 import { paymentWebhook, paymentReturn } from './app/hdfc/callbacks.js';
 
+const safeLogUrl = url => url.split('?')[0].replace(/(\/payments\/hdfc\/return)\/[^/]+/, '$1/[redacted]');
+
 export const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', env.TRUST_PROXY_HOPS);
@@ -29,11 +31,11 @@ app.use(
       return 'info';
     },
     customSuccessMessage: (req, res) =>
-      `${req.method} ${req.url.split('?')[0]} → ${res.statusCode}`,
+      `${req.method} ${safeLogUrl(req.url)} → ${res.statusCode}`,
     customErrorMessage: (req, res) =>
-      `${req.method} ${req.url.split('?')[0]} → ${res.statusCode} Request failed`,
+      `${req.method} ${safeLogUrl(req.url)} → ${res.statusCode} Request failed`,
     serializers: {
-      req: (req) => ({ id: req.id, method: req.method, url: req.url.split('?')[0] }),
+      req: (req) => ({ id: req.id, method: req.method, url: safeLogUrl(req.url) }),
       res: (res) => ({ statusCode: res.statusCode }),
     },
   }),
@@ -100,9 +102,9 @@ app.use('/api', (req, res, next) => {
   next();
 });
 app.post('/api/payments/hdfc/webhook', express.json({ limit: '64kb' }), paymentWebhook);
-app.get('/api/payments/hdfc/return', paymentReturn);
+app.get(['/api/payments/hdfc/return', '/api/payments/hdfc/return/:token'], paymentReturn);
 app.post(
-  '/api/payments/hdfc/return',
+  ['/api/payments/hdfc/return', '/api/payments/hdfc/return/:token'],
   express.urlencoded({ extended: false, limit: '16kb' }),
   paymentReturn,
 );

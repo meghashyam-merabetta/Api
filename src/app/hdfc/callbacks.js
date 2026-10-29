@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../shared/errors.js';
 import { findOrder, syncOrder } from '../orders/orders.controller.js';
+import { verifyReturnToken } from './return-token.js';
+import { receiptHtml } from './receipt.js';
 export async function paymentWebhook(req, res) {
   if (!env.HDFC_WEBHOOK_USER || !env.HDFC_WEBHOOK_PASSWORD)
     throw new HttpError(503, 'Webhook is not configured');
@@ -27,11 +29,27 @@ export async function paymentWebhook(req, res) {
   await syncOrder(row);
   res.json({ received: true });
 }
-export function paymentReturn(_req, res) {
-  res
-    .set('Cache-Control', 'no-store')
-    .type('html')
-    .send(
-      '<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Merabetta payment</title><body><h1>Return to Merabetta</h1><p>Your payment is being verified. Return to the app and select Check payment status. Do not pay again until the status is confirmed.</p><a href="merabetta://payment-return">Open Merabetta</a></body></html>',
-    );
+export async function paymentReturn(req, res) {
+  res.set('Cache-Control', 'no-store').set('Referrer-Policy', 'no-referrer')
+    .set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+  if (!req.params.token) return res.status(400).type('html').send('<h1>Open your order in Merabetta</h1><p>This payment link does not contain an order reference. Check payment status from your signed-in account.</p>');
+  const id = verifyReturnToken(req.params.token);
+  for (const parameters of [req.query, req.body]) {
+    if (parameters?.order_id !== undefined && parameters.order_id !== id)
+      throw new HttpError(400, 'Payment order reference does not match');
+  }
+  let row = await findOrder(id);
+  let unverified = false;
+  try {
+    // Never trust the status/amount received through the browser callback.
+    row = await syncOrder(row, { force: true });
+  } catch (error) {
+    unverified = true;
+    req.log?.warn({ orderId: id, status: error.status }, 'Return payment verification deferred');
+  }
+  const download = req.query.download === '1';
+  if (download && (unverified || row.payment_status !== 'CHARGED'))
+    throw new HttpError(409, 'A receipt is available only after payment verification');
+  if (download) res.set('Content-Disposition', `attachment; filename="Merabetta-receipt-${id}.html"`);
+  return res.status(unverified ? 202 : 200).type('html').send(receiptHtml(row, { unverified, download }));
 }
