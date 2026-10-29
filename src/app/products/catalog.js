@@ -27,7 +27,7 @@ export function categoryIcon(name) {
 
 export async function productCatalog(transaction) {
   const categories = await sequelize.query(
-    'SELECT id::text,name,slug,parent_id::text AS "parentId",description,image_url AS image FROM categories WHERE is_active ORDER BY sort_order,id',
+    'SELECT id::text,name,slug,parent_id::text AS "parentId",sort_order AS "sortOrder",description,image_url AS image FROM categories WHERE is_active ORDER BY sort_order,id',
     { type: QueryTypes.SELECT, transaction },
   );
   const brands = await sequelize.query(
@@ -103,6 +103,7 @@ export async function productCatalog(transaction) {
   return {
     categories: categories.map((c) => ({
       ...c,
+      image: c.image?.trim() ? productImageUrl(c.image.trim()) : null,
       icon: categoryIcon(c.name),
       color: '#77409A',
       bg: '#F8F3FC',

@@ -197,7 +197,7 @@ export async function catalog(_req, res) {
       "SELECT status,pages_done,total,processed,completed_at,error FROM lab_catalog_sync WHERE lab_id='redcliffe'",
       { type: QueryTypes.SELECT },
     ),
-  ]);
+    ]);
   res.json({
     data: rows.map((row) => ({ ...row.catalog_data, specimenInstructions: specimenInstructions(row.specimen_instructions) })),
     sync: states[0] || { status: 'idle' },
