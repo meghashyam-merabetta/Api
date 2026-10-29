@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../shared/errors.js';
 import { recordProviderCall } from '../../shared/provider-log.js';
@@ -28,7 +29,7 @@ export function requireGateway() {
   } catch {
     throw new HttpError(503, 'Payment return URL is not configured.');
   }
-  if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password)
+  if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password || u.port || isIP(u.hostname.replace(/^\[|\]$/g, '')) || !u.hostname.includes('.') || /\.(localhost|local|internal)$/.test(u.hostname) || u.pathname.replace(/\/$/, '') !== '/api/payments/hdfc/return')
     throw new HttpError(503, 'A public HTTPS payment return URL is required.');
 }
 export async function gatewayRequest(path, customerId, body) {

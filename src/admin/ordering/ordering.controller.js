@@ -19,7 +19,8 @@ const select = (kind) => {
     ${product ? 'NULL::text' : 'o.lab_id'} AS "labId",
     ${product ? 'NULL::text' : 'o.integration_status'} AS "integrationStatus",
     ${product ? 'NULL::text' : 'o.provider_booking_id'} AS "providerBookingId",
-    o.payload FROM ${product ? 'orders' : 'lab_bookings'} o`;
+    o.payload FROM ${product ? 'orders' : 'lab_bookings'} o
+    ${product ? "WHERE COALESCE(o.payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(o.payload->>'isTestOrder','false')<>'true'" : ''}`;
 };
 
 export function buildFilter(kind, query) {
