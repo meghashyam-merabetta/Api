@@ -188,7 +188,7 @@ export async function listProducts(req, res) {
   });
 
   res.json({
-    data: rows,
+    data: rows.map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r)),
     pagination: {
       total: count,
       limit,
@@ -212,7 +212,7 @@ export async function getProduct(req, res) {
     ],
   });
 
-  res.json({ data: result });
+  res.json({ data: typeof result?.toJSON === 'function' ? result.toJSON() : result });
 }
 
 export async function createProduct(req, res) {
