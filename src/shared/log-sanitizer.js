@@ -2,13 +2,21 @@ const sensitiveKey =
   /password|token|secret|authorization|cookie|otp|^code$|devcode|codehash/i;
 
 export function sanitizeLogValue(value, depth = 0) {
-  if (depth > 10) return '[truncated]';
-  if (Array.isArray(value)) {
-    return value.slice(0, 100).map((item) => sanitizeLogValue(item, depth + 1));
+  if (depth > 4) return '[truncated]';
+  if (value == null) return value;
+  if (typeof value === 'object' && typeof value.toJSON === 'function') {
+    try {
+      value = value.toJSON();
+    } catch {
+      // ignore
+    }
   }
-  if (value && typeof value === 'object') {
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeLogValue(item, depth + 1));
+  }
+  if (typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
+      Object.entries(value).slice(0, 50).map(([key, item]) => [
         key,
         sensitiveKey.test(key) ? '[REDACTED]' : sanitizeLogValue(item, depth + 1),
       ]),
