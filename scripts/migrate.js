@@ -68,4 +68,5 @@ try {
 );
   await sequelize.query(readFileSync(new URL('../sql/027-admin-catalog-reliability.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/035-product-specification-fields.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/036-product-soft-delete.sql', import.meta.url), 'utf8'));
 } finally { await sequelize.close(); }

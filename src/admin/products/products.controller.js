@@ -343,11 +343,11 @@ export async function deleteProduct(req, res) {
   await sequelize.transaction(async (transaction) => {
     const product = await findProduct(req.validatedParams.productId, transaction);
     await deactivateProductCatalog(product.product_id, transaction);
-    const images = await models.productImage.findAll({
-      where: { product_id: product.product_id },
-      transaction,
-    });
-    for (const image of images) await queueImageCleanup(image.s3_key, transaction);
+    await product.update({ product_status: 'archived' }, { transaction });
+    await models.productVariant.update(
+      { is_active: false, deleted_at: new Date() },
+      { where: { product_id: product.product_id }, transaction },
+    );
     await product.destroy({ transaction });
   });
   res.status(204).end();

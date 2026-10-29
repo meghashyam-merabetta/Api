@@ -52,5 +52,5 @@ export const ProductVariant = sequelize.define(
       },
     },
   },
-  { ...options, tableName: 'product_variants' },
+  { ...options, paranoid: true, deletedAt: 'deleted_at', tableName: 'product_variants' },
 );
