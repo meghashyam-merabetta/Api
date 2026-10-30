@@ -3,7 +3,22 @@ import { HttpError } from './errors.js';
 
 const money = z.number().finite().min(0).max(999999999.99).multipleOf(0.01);
 const percent = z.number().finite().min(0).max(100).multipleOf(0.01);
-const text = z.string().trim().max(2000).nullable().optional();
+const preprocessEmptyStringToNull = (val) => {
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+  return val;
+};
+const text = z.preprocess(
+  preprocessEmptyStringToNull,
+  z.string().max(2000).nullable().optional(),
+);
+const optionalCode = (max = 100) =>
+  z.preprocess(
+    preprocessEmptyStringToNull,
+    z.string().min(1).max(max).nullable().optional(),
+  );
 const isoDate = z
   .string()
   .trim()
@@ -11,9 +26,9 @@ const isoDate = z
   .nullable()
   .optional();
 export const catalogFields = {
-  product_code: z.string().trim().min(1).max(100).nullable().optional(),
-  sku: z.string().trim().min(1).max(100).nullable().optional(),
-  barcode: z.string().trim().min(1).max(100).nullable().optional(),
+  product_code: optionalCode(100),
+  sku: optionalCode(100),
+  barcode: optionalCode(100),
   product_type: z.enum(['simple', 'variable']).optional(),
   item_condition: z.enum(['new', 'refurbished']).optional(),
   regular_price: money.nullable().optional(),
@@ -29,7 +44,7 @@ export const catalogFields = {
   min_order_quantity: z.number().int().min(1).optional(),
   max_order_quantity: z.number().int().min(1).nullable().optional(),
   target_audience: text,
-  hsn_code: z.string().trim().max(20).nullable().optional(),
+  hsn_code: optionalCode(20),
   gst_rate: percent.nullable().optional(),
   weight: z.number().finite().positive().nullable().optional(),
   weight_unit: z.enum(['g', 'kg']).optional(),
@@ -66,7 +81,10 @@ export const catalogFields = {
   model_number: text,
   manufacturer_contact_name: text,
   manufacturer_phone: text,
-  manufacturer_email: z.string().trim().email().max(255).nullable().optional(),
+  manufacturer_email: z.preprocess(
+    preprocessEmptyStringToNull,
+    z.string().email().max(255).nullable().optional(),
+  ),
   license_number: text,
   repacker_name: text,
   repacker_address: text,
