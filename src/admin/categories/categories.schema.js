@@ -16,7 +16,15 @@ export const listQuerySchema = z
     search: z.string().trim().min(1).max(150).optional(),
     is_active: z.enum(['true', 'false']).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) =>
+      !(data.roots_only === 'true' && data.parent_category_id !== undefined),
+    {
+      message: 'roots_only cannot be combined with parent_category_id',
+      path: ['parent_category_id'],
+    }
+  );
 
 export const categoryIdParamsSchema = z
   .object({
@@ -31,7 +39,7 @@ export const createCategorySchema = z
     category_image: z.string().trim().nullable().optional(),
     parent_category_id: z.number().int().positive().nullable().optional(),
     description: z.string().trim().nullable().optional(),
-    sort_order: z.number().int().optional().default(0),
+    sort_order: z.number().int().min(0).optional().default(0),
     is_active: z.boolean().optional().default(true),
   })
   .strict();
@@ -43,7 +51,7 @@ export const updateCategorySchema = z
     category_image: z.string().trim().nullable().optional(),
     parent_category_id: z.number().int().positive().nullable().optional(),
     description: z.string().trim().nullable().optional(),
-    sort_order: z.number().int().optional(),
+    sort_order: z.number().int().min(0).optional(),
     is_active: z.boolean().optional(),
   })
   .strict()
