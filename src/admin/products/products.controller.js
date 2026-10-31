@@ -154,6 +154,8 @@ export async function listProducts(req, res) {
       { product_code: { [Op.iLike]: `%${search}%` } },
       { sku: { [Op.iLike]: `%${search}%` } },
       { barcode: { [Op.iLike]: `%${search}%` } },
+      { manufacturer_sku: { [Op.iLike]: `%${search}%` } },
+      { model_number: { [Op.iLike]: `%${search}%` } },
       { keywords: { [Op.contains]: [search] } },
     ];
   }
