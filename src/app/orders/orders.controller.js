@@ -346,6 +346,17 @@ export async function createOrder(req, res) {
     });
     const url = paymentUrl(result.payment_links?.web);
     if (result.order_id !== row.id || !url) throw Error('Invalid gateway session');
+    if (result.sdk_payload && typeof result.sdk_payload === 'object' && result.sdk_payload.payload) {
+      const sdk = result.sdk_payload.payload;
+      if (sdk.orderId !== row.id || sdk.clientId !== env.HDFC_CLIENT_ID || sdk.merchantId !== env.HDFC_MERCHANT_ID
+        || sdk.action !== 'paymentPage' || (sdk.amount !== undefined && paise(sdk.amount) !== Number(row.amount_paise)))
+        throw Error('Gateway SDK session does not match the checkout');
+      await sequelize.query(
+        `INSERT INTO hdfc_sdk_sessions(order_id,sdk_payload,client_id) VALUES(:id,CAST(:payload AS jsonb),:client)
+         ON CONFLICT(order_id) DO UPDATE SET sdk_payload=EXCLUDED.sdk_payload,client_id=EXCLUDED.client_id,created_at=now()`,
+        { replacements: { id: row.id, payload: JSON.stringify(result.sdk_payload), client: env.HDFC_CLIENT_ID }, logging: false },
+      );
+    }
     await sequelize.query(
       "UPDATE product_checkouts SET session_state='ready',payment_url=:url,updated_at=now() WHERE id=:id",
       { replacements: { id: row.id, url } },
@@ -366,6 +377,22 @@ export async function createOrder(req, res) {
 export async function getOrder(req, res) {
   const row = await findOrder(req.validatedParams.id, req.credential.id);
   res.json(orderView(await syncOrder(row)));
+}
+export async function getPaymentSession(req, res) {
+  res.set('Cache-Control', 'no-store');
+  const row = await findOrder(req.validatedParams.id, req.credential.id);
+  if (['CHARGED', 'FAILED', 'COD'].includes(row.payment_status)) {
+    throw new HttpError(409, 'This order is not available for payment. Refresh its status.');
+  }
+  const [session] = await sequelize.query(
+    `SELECT sdk_payload,client_id FROM hdfc_sdk_sessions
+     WHERE order_id=:id AND created_at > now() - interval '10 minutes'`,
+    { replacements: { id: row.id }, type: QueryTypes.SELECT },
+  );
+  const payload = session?.sdk_payload;
+  const expiries = [payload?.expiry, payload?.payload?.clientAuthTokenExpiry].filter(value => value !== undefined && value !== null);
+  const expired = expiries.some(value => !Number.isFinite(Date.parse(value)) || Date.parse(value) <= Date.now() + 30000);
+  res.json({ orderId: row.id, sdkPayload: expired ? null : payload || null, clientId: session?.client_id || null });
 }
 export async function listOrders(req, res) {
   const rows = await sequelize.query(
