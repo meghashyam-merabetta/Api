@@ -19,6 +19,6 @@ try {
     return { timestamp: row.created_at, method: 'GET', endpoint: row.endpoint, httpStatus: row.http_status,
       response: Object.fromEntries(fields.filter(key => ['string', 'number', 'boolean'].includes(typeof data[key])).map(key => [key, data[key]])) };
   });
-  await writeFile(resolve(output), JSON.stringify({ orderId, redacted: true, note: 'Customer details, credentials and payment links omitted. Original responses retained in restricted database logs.', logs }, null, 2), { flag: 'wx', mode: 0o600 });
+  await writeFile(resolve(output), JSON.stringify({ orderId, redacted: true, note: 'Only verified reconciliation fields are retained; customer details, credentials, SDK tokens and payment links are omitted.', logs }, null, 2), { flag: 'wx', mode: 0o600 });
   console.log(`Exported ${logs.length} redacted Status API responses to ${resolve(output)}`);
 } finally { await sequelize.close(); }

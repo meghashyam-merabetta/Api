@@ -57,9 +57,19 @@ try {
   await sequelize.transaction(async transaction => { await sequelize.query(readFileSync(new URL('../sql/033-pricing-settings.sql', import.meta.url), 'utf8'), { transaction }); });
   await sequelize.transaction(async transaction => {
     await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+    await sequelize.query(readFileSync(new URL('../sql/038-lab-offer-coupon-eligibility.sql', import.meta.url), 'utf8'), { transaction });
+  });
+  await sequelize.query(readFileSync(new URL('../sql/039-home-banner-slots.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+    await sequelize.query(readFileSync(new URL('../sql/040-lab-price-half-up.sql', import.meta.url), 'utf8'), { transaction });
+  });
+  await sequelize.transaction(async transaction => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
     await sequelize.query(readFileSync(new URL('../sql/036-random-order-number-width.sql', import.meta.url), 'utf8'), { transaction });
   });
   console.log('Customer schema ready.');
+  await sequelize.query(readFileSync(new URL('../sql/037-hdfc-sdk-sessions.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/023-admin-catalog-base.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/024-admin-catalog-details.sql', import.meta.url), 'utf8'));

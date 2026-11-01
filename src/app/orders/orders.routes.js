@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { couponCodeSchema } from '../coupons/routes.js';
 import { addressSchema } from '../customers/customer.schema.js';
-import { createOrder, getOrder, listOrders } from './orders.controller.js';
+import { createOrder, getOrder, listOrders, getPaymentSession } from './orders.controller.js';
 export const orderSchema = z
   .object({
     paymentMethod: z.enum(['online', 'cod']).default('online'),
@@ -25,6 +25,11 @@ export const orderSchema = z
   })
   .strict();
 export const orderRoutes = [
+  {
+    method: 'get', path: '/orders/:id/payment-session',
+    params: z.object({ id: z.string().regex(/^MB(?:[0-9]{11}|[a-f0-9]{18})$/) }),
+    handler: getPaymentSession,
+  },
   { method: 'post', path: '/orders', schema: orderSchema, handler: createOrder },
   { method: 'get', path: '/orders', handler: listOrders },
   {

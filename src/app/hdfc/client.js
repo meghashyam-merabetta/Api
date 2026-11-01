@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { loadJwtKeys, encryptGatewayPayload, decryptGatewayPayload } from './jwt.js';
+import { gatewayTransport } from './transport.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../shared/errors.js';
 import { recordProviderCall } from '../../shared/provider-log.js';
@@ -17,7 +19,9 @@ export function paymentUrl(value) {
 }
 export function requireGateway() {
   if (
-    !env.HDFC_API_KEY ||
+    !env.HDFC_JWT_KEY_ID ||
+    !env.HDFC_JWT_PRIVATE_KEY_PATH ||
+    !env.HDFC_JWT_BANK_PUBLIC_KEY_PATH ||
     !env.HDFC_MERCHANT_ID ||
     !env.HDFC_CLIENT_ID ||
     !env.HDFC_RETURN_URL
@@ -31,66 +35,66 @@ export function requireGateway() {
   }
   if (u.protocol !== 'https:' || u.search || u.hash || u.username || u.password || u.port || isIP(u.hostname.replace(/^\[|\]$/g, '')) || !u.hostname.includes('.') || /\.(localhost|local|internal)$/.test(u.hostname) || u.pathname.replace(/\/$/, '') !== '/api/payments/hdfc/return')
     throw new HttpError(503, 'A public HTTPS payment return URL is required.');
+  return loadJwtKeys(env);
 }
 export async function gatewayRequest(path, customerId, body) {
-  requireGateway();
+  const keys = requireGateway();
   if (path !== '/session' && !/^\/orders\/[A-Za-z0-9]{1,20}$/.test(path))
     throw Error('Invalid gateway path');
+  const session = path === '/session';
+  if (session !== Boolean(body)) throw Error('Invalid gateway request');
   const log = {
     provider: 'hdfc',
     providerRequestId: randomUUID(),
     endpoint: path,
-    method: body ? 'POST' : 'GET',
+    method: session ? 'POST' : 'GET',
   };
   const start = Date.now();
   await recordProviderCall(log);
   try {
-    const r = await fetch(gatewayOrigin() + path, {
+    const encrypted = await encryptGatewayPayload(session ? body : { order_id: path.slice('/orders/'.length) }, keys);
+    const response = await gatewayTransport.request(gatewayOrigin() + (session ? '/v4/session' : '/v4/order-status'), {
       method: log.method,
-      redirect: 'error',
-      signal: AbortSignal.timeout(12000),
       headers: {
-        Authorization: 'Basic ' + Buffer.from(env.HDFC_API_KEY + ':').toString('base64'),
         'x-merchantid': env.HDFC_MERCHANT_ID,
         'x-customerid': customerId,
         'x-resellerid': 'hdfc_reseller',
         'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      body: JSON.stringify(encrypted),
     });
-    const responseBody = await r.text();
-    let data = null;
-    try {
-      data = JSON.parse(responseBody);
-    } catch {
-      /* Keep the original response for diagnostics. */
+    if (response.status < 200 || response.status >= 300) {
+      const error = new HttpError(502, [401, 403].includes(response.status)
+        ? 'HDFC payment access was rejected. Please contact support to check the JWT configuration. Your cart is unchanged.'
+        : 'HDFC could not verify this request. Please check your saved order.');
+      error.gatewayStatus = response.status;
+      throw error;
     }
+    // Plaintext or incorrectly signed successes must never update an order.
+    const data = await decryptGatewayPayload(JSON.parse(response.text), keys);
     await recordProviderCall({
       ...log,
-      responseBody,
-      httpStatus: r.status,
+      httpStatus: response.status,
+      // Persist only the reconciliation fields; never SDK tokens, keys, links or customer PII.
+      responseBody: JSON.stringify(Object.fromEntries(
+        ['order_id', 'merchant_id', 'status', 'status_id', 'amount', 'currency', 'txn_id', 'gateway_id', 'gateway', 'test_mode']
+          .filter(key => ['string', 'number', 'boolean'].includes(typeof data[key]))
+          .map(key => [key, data[key]]),
+      )),
       durationMs: Date.now() - start,
       providerStatus:
         typeof data?.status === 'string' && /^[A-Z_]{1,40}$/.test(data.status)
           ? data.status
           : null,
     });
-    if (!r.ok || !data) {
-      const error = new HttpError(
-        502,
-        r.status === 401 || r.status === 403
-          ? 'HDFC payment access was rejected. Please contact support to check the live gateway configuration. Your cart is unchanged.'
-          : 'Payment gateway is temporarily unavailable. Payment has not been confirmed; please try again later.',
-      );
-      error.gatewayStatus = r.status;
-      throw error;
-    }
     return data;
   } catch (e) {
     await recordProviderCall({
       ...log,
+      httpStatus: e.gatewayStatus,
       durationMs: Date.now() - start,
-      failure: e.name === 'TimeoutError' ? 'timeout' : 'gateway_error',
+      failure: ['TimeoutError', 'AbortError'].includes(e.name) ? 'timeout' : 'gateway_error',
     });
     throw e instanceof HttpError
       ? e

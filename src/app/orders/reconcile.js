@@ -16,6 +16,10 @@ export function startPaymentReconciliation() {
     }
     running = true;
     try {
+      // A process may die after sending the bank request. Recover by status lookup,
+      // never by blindly submitting a second session.
+      await sequelize.query("UPDATE product_checkouts SET session_state='unknown',updated_at=now() WHERE session_state='submitting' AND updated_at<now()-interval '2 minutes'");
+      await sequelize.query("DELETE FROM hdfc_sdk_sessions WHERE created_at<now()-interval '1 hour'", { logging: false });
       // Claim a small batch so multiple API processes do not poll the same order.
       const rows = await sequelize.transaction(async (transaction) => {
         const claimed = await sequelize.query(
