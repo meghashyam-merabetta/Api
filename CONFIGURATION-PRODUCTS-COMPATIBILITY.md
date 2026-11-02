@@ -76,3 +76,5 @@ WHERE product_status='active' AND deleted_at IS NULL
   AND inventory_managed AND NOT is_configuration_group
 ORDER BY id;
 ```
+
+UAT manifest preservation: package.json/package-lock.json have reviewed server-side dependency differences and are excluded from the deployment payload. Use the equivalent `node scripts/configuration-products.js` commands on UAT rather than the new local npm aliases. No dependency installation is required.
