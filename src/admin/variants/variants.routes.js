@@ -1,4 +1,17 @@
 import {
+  getVariantImages,
+  setVariantImageMode,
+  uploadVariantImage,
+  deleteVariantImage,
+  primaryVariantImage,
+  shareVariantImages,
+} from '../../shared/variant-image.controller.js';
+import {
+  variantImageParamsSchema,
+  variantImageModeSchema,
+  shareVariantImagesSchema,
+} from './variants.schema.js';
+import {
   listVariantAttributes,
   createVariantAttribute,
   updateVariantAttribute,
@@ -50,6 +63,57 @@ export const variantAttributeRoutes = [
   },
 ];
 export const productVariantRoutes = [
+  {
+    method: 'post',
+    path: '/:productId/variants/images/share',
+    auth: true,
+    params: variantProductParamsSchema,
+    schema: shareVariantImagesSchema,
+    handler: shareVariantImages,
+  },
+  {
+    method: 'get',
+    path: '/:productId/variants/:variantId/images',
+    auth: true,
+    params: productVariantParamsSchema,
+    handler: getVariantImages,
+  },
+  {
+    method: 'post',
+    path: '/:productId/variants/:variantId/images',
+    auth: true,
+    params: productVariantParamsSchema,
+    handler: uploadVariantImage,
+  },
+  {
+    method: 'patch',
+    path: '/:productId/variants/:variantId/images',
+    auth: true,
+    params: productVariantParamsSchema,
+    schema: variantImageModeSchema,
+    handler: setVariantImageMode,
+  },
+  {
+    method: 'put',
+    path: '/:productId/variants/:variantId/images/:imageId',
+    auth: true,
+    params: variantImageParamsSchema,
+    handler: uploadVariantImage,
+  },
+  {
+    method: 'delete',
+    path: '/:productId/variants/:variantId/images/:imageId',
+    auth: true,
+    params: variantImageParamsSchema,
+    handler: deleteVariantImage,
+  },
+  {
+    method: 'patch',
+    path: '/:productId/variants/:variantId/images/:imageId/primary',
+    auth: true,
+    params: variantImageParamsSchema,
+    handler: primaryVariantImage,
+  },
   {
     method: 'get',
     path: '/:productId/variants/:variantId',

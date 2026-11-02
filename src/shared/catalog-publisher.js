@@ -1,3 +1,4 @@
+import { variantGallery } from './variant-galleries.js';
 import { models } from '../models/index.js';
 import { effectivePrice } from './catalog-fields.js';
 
@@ -31,6 +32,10 @@ export async function publishProductCatalog(productId, transaction) {
   for (const variant of items) {
     const id = variant ? `variant:${variant.id}` : `product:${productId}`;
     const details = variant?.toJSON();
+    const gallery = variant
+      ? await variantGallery(variant, product, transaction, images)
+      : null;
+    const effectiveImages = gallery?.effective_images ?? images;
     const pricing =
       details?.regular_price === null || details?.regular_price === undefined
         ? base
@@ -55,8 +60,9 @@ export async function publishProductCatalog(productId, transaction) {
           ? null
           : Number(pricing.regular_price),
       subtitle: product.short_description,
-      image: images[0]?.image_url ?? null,
-      images: images.map((image) => image.toJSON()),
+      gallery,
+      image: effectiveImages[0]?.image_url ?? null,
+      images: effectiveImages.map((image) => (image.toJSON ? image.toJSON() : image)),
       categoryId: primary ? String(primary) : (categoryIds[0] ?? null),
       category_ids: categoryIds,
       stock_quantity: variant ? variant.stock_quantity : product.stock_quantity,

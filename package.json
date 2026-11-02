@@ -20,7 +20,8 @@
     "format": "prettier --write \"src/**/*.js\"",
     "format:check": "prettier --check \"src/**/*.js\"",
     "db:migrate:catalog-reliability": "node scripts/migrate-catalog-reliability.js",
-    "images:reconcile": "node scripts/reconcile-product-images.js"
+    "images:reconcile": "node scripts/reconcile-product-images.js",
+    "db:migrate:variant-galleries": "node scripts/migrate-variant-galleries.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1154.0",

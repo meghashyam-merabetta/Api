@@ -1,3 +1,4 @@
+import { auditContext } from './catalog-audit.js';
 import { createHash } from 'node:crypto';
 import { sequelize } from '../config/database.js';
 import { AdminCatalogRequest } from '../models/catalog-reliability.model.js';
@@ -20,7 +21,9 @@ export const fingerprint = (value) =>
 
 // The replay record commits with the mutation. The lock also serializes concurrent retries.
 export async function catalogMutation(req, payload, status, execute) {
-  const key = req.method === 'POST' ? req.get('Idempotency-Key') : undefined;
+  const key = ['POST', 'PUT'].includes(req.method)
+    ? req.get('Idempotency-Key')
+    : undefined;
   if (key !== undefined && !/^[A-Za-z0-9._:-]{1,128}$/.test(key))
     throw new HttpError(
       400,
@@ -32,6 +35,7 @@ export async function catalogMutation(req, payload, status, execute) {
   const id = key ? fingerprint([actor, req.method, req.baseUrl, req.path, key]) : null;
   const digest = key ? fingerprint(payload) : null;
   return sequelize.transaction(async (transaction) => {
+    await auditContext(req, transaction);
     if (id) {
       await sequelize.query('SELECT pg_advisory_xact_lock(hashtextextended(:id, 0))', {
         replacements: { id },
