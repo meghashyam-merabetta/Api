@@ -57,7 +57,7 @@ CONFIGURATION_PRODUCTS_ENABLED=true node scripts/configuration-products.js \
 
 If the approved policy is per-variant stock, the apply invocation must also contain `--accept-variant-stock`. Never run this against a target inferred from local defaults; confirm the database before any apply.
 
-Read-only UAT findings on 2 November: JOYLIFE group 998974 has parent stock 30; M (variant 220), L (221) and XL (222) each declare 30, totaling 90 in the UI. The strict converter blocks this ambiguity. The user must decide whether 90 across sizes is correct or 30 total needs allocation. Broader legacy stock/availability conflicts also require review. No UAT schema, application, product, inventory, image or order was modified for this implementation.
+Read-only UAT findings on 2 November: JOYLIFE group 998974 has parent stock 30; M (variant 220), L (221) and XL (222) each declare 30, totaling 90 in the UI. The strict converter blocks this ambiguity. The user explicitly selected 30 units per size (90 total) on 2 November 2026. For group 998974 only, the approved stock policy is therefore --accept-variant-stock; the source parent counter is compatibility metadata and must not become additional sellable stock. This stock decision does not authorize applying schema 039 or deploying the feature. Broader legacy stock/availability conflicts also require review. No UAT schema, application, product, inventory, image or order was modified for this implementation.
 
 ## Verification and release
 
