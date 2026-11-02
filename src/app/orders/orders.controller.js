@@ -77,8 +77,8 @@ async function promoteCheckout(id, transaction) {
   const [checkout] = await sequelize.query('SELECT payload FROM product_checkouts WHERE id=:id', { replacements: { id }, type: QueryTypes.SELECT, transaction });
   for (const item of checkout.payload.items) {
     await sequelize.query(
-      'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot) VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb)) ON CONFLICT(order_id,product_id) DO NOTHING',
-      { replacements: { id, product: item.id, qty: item.quantity, unit: paise(item.snapshot.price), snapshot: JSON.stringify(item.snapshot) }, transaction },
+      'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot'+(env.CONFIGURATION_PRODUCTS_ENABLED?',independent_product_id':'')+') VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb)'+(env.CONFIGURATION_PRODUCTS_ENABLED?',:exactProduct':'')+') ON CONFLICT(order_id,product_id) DO NOTHING',
+      { replacements: { id, product: item.id, exactProduct:item.snapshot.individual_product_id ?? null, qty: item.quantity, unit: paise(item.snapshot.price), snapshot: JSON.stringify(item.snapshot) }, transaction },
     );
   }
 }

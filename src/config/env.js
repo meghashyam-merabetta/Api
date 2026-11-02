@@ -8,6 +8,10 @@ const secret = z
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    CONFIGURATION_PRODUCTS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     PRODUCT_IMAGE_BASE_URL: z.string().trim().default(''),
     LOCATIONIQ_API_KEY: z.string().trim().default(''),

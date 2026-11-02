@@ -1,3 +1,7 @@
+import {
+  configurationVariantFields,
+  configurationLink,
+} from './configuration-products.js';
 import { models } from '../models/index.js';
 import { productImages } from './independent-images.js';
 
@@ -37,6 +41,16 @@ export async function variantGallery(variant, product, transaction, inheritedIma
 export async function variantWithGallery(variant, product, transaction, inheritedImages) {
   return {
     ...variant.toJSON(),
+    ...(await configurationVariantFields(variant, transaction)),
     gallery: await variantGallery(variant, product, transaction, inheritedImages),
   };
+}
+
+export async function galleryForConfigurationProduct(productId, transaction) {
+  const link = await configurationLink({ productId }, transaction);
+  if (!link) return null;
+  const variant = await models.productVariant.findByPk(link.variant_id, { transaction });
+  const group = await models.product.findByPk(link.group_product_id, { transaction });
+  if (!variant || !group) return null;
+  return variantGallery(variant, group, transaction);
 }

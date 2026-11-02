@@ -1,3 +1,4 @@
+import { configurationLink, configurationStock } from './configuration-products.js';
 import { variantGallery } from './variant-galleries.js';
 import { models } from '../models/index.js';
 import { effectivePrice } from './catalog-fields.js';
@@ -30,6 +31,9 @@ export async function publishProductCatalog(productId, transaction) {
   const items =
     product.product_type === 'variable' || variants.length > 0 ? variants : [null];
   for (const variant of items) {
+    const link = variant
+      ? await configurationLink({ variantId: variant.id }, transaction)
+      : null;
     const id = variant ? `variant:${variant.id}` : `product:${productId}`;
     const details = variant?.toJSON();
     const gallery = variant
@@ -65,7 +69,14 @@ export async function publishProductCatalog(productId, transaction) {
       images: effectiveImages.map((image) => (image.toJSON ? image.toJSON() : image)),
       categoryId: primary ? String(primary) : (categoryIds[0] ?? null),
       category_ids: categoryIds,
-      stock_quantity: variant ? variant.stock_quantity : product.stock_quantity,
+      stock_quantity: link
+        ? await configurationStock(link.product_id, transaction)
+        : product.inventory_managed
+          ? await configurationStock(productId, transaction)
+          : variant
+            ? variant.stock_quantity
+            : product.stock_quantity,
+      individual_product_id: link ? String(link.product_id) : null,
       source_product_id: String(productId),
       source_variant_id: variant ? String(variant.id) : null,
     };

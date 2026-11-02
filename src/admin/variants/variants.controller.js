@@ -1,3 +1,7 @@
+import {
+  synchronizeConfiguration,
+  archiveConfigurations,
+} from '../../shared/configuration-products.js';
 import { variantWithGallery } from '../../shared/variant-galleries.js';
 import { catalogMutation, sendMutation } from '../../shared/catalog-idempotency.js';
 import { publishProductCatalog } from '../../shared/catalog-publisher.js';
@@ -88,6 +92,10 @@ export async function saveVariant(req, res) {
             { ...data, product_id: productId },
             { transaction },
           );
+      await synchronizeConfiguration(req, ownerProduct, row, transaction, {
+        initial: !existing,
+        stockChanged: Object.hasOwn(req.validated, 'stock_quantity'),
+      });
       await publishProductCatalog(productId, transaction);
       return variantWithGallery(row, ownerProduct, transaction);
     },
@@ -189,6 +197,12 @@ export async function listProductVariants(req, res) {
 export async function deleteProductVariant(req, res) {
   await sequelize.transaction(async (transaction) => {
     await product(req.validatedParams.productId, transaction);
+    await archiveConfigurations(
+      req,
+      req.validatedParams.productId,
+      transaction,
+      req.validatedParams.variantId,
+    );
     const removed = await ProductVariant.destroy({
       where: {
         id: req.validatedParams.variantId,

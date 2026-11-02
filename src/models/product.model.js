@@ -1,10 +1,27 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
+import { env } from '../config/env.js';
 import { effectivePrice } from '../shared/catalog-fields.js';
 
 export const Product = sequelize.define(
   'Product',
   {
+    ...(env.CONFIGURATION_PRODUCTS_ENABLED
+      ? {
+          attributes: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+          product_group_code: { type: DataTypes.STRING(100), allowNull: true },
+          inventory_managed: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          },
+          is_configuration_group: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          },
+        }
+      : {}),
     product_code: { type: DataTypes.STRING(100), allowNull: true },
     sku: { type: DataTypes.STRING(100), allowNull: true },
     barcode: { type: DataTypes.STRING(100), allowNull: true },
