@@ -1,3 +1,4 @@
+import { variantWithGallery } from '../../shared/variant-galleries.js';
 import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
 import {
   catalogMutation,
@@ -9,6 +10,7 @@ import {
   reserveImage,
   imageUrl,
   queueImageCleanup,
+  finishImageCleanup,
 } from '../../shared/image-storage.js';
 import {
   publishProductCatalog,
@@ -214,6 +216,10 @@ export async function getProduct(req, res) {
     ],
   });
 
+  for (const variant of result.variants ?? []) {
+    const enriched = await variantWithGallery(variant, result);
+    variant.setDataValue('gallery', enriched.gallery);
+  }
   res.json({ data: typeof result?.toJSON === 'function' ? result.toJSON() : result });
 }
 
@@ -467,6 +473,7 @@ export async function setPrimaryProductImage(req, res) {
 export function replaceProductImage(req, res, next) {
   productImageUpload(req, res, async (error) => {
     if (error) return next(new HttpError(400, error.message));
+    let removedKey;
     try {
       const { productId, imageId } = req.validatedParams;
       const files = req.files ?? [];
@@ -482,12 +489,14 @@ export function replaceProductImage(req, res, next) {
         });
         if (!image) throw new HttpError(404, 'Product image not found');
         const { key, journal } = await stageImage(reserved, file, transaction);
-        await queueImageCleanup(image.s3_key, transaction);
+        removedKey = image.s3_key;
+        await queueImageCleanup(removedKey, transaction);
         await image.update({ s3_key: key, image_url: imageUrl(key) }, { transaction });
         await journal.destroy({ transaction });
         await publishProductCatalog(productId, transaction);
         return image;
       });
+      await finishImageCleanup([removedKey]);
       res.json({ data: updated });
     } catch (replaceError) {
       next(replaceError);
@@ -501,6 +510,7 @@ export function replaceProductImage(req, res, next) {
 
 export async function deleteProductImage(req, res) {
   const { productId, imageId } = req.validatedParams;
+  let removedKey;
   await sequelize.transaction(async (transaction) => {
     await findProduct(productId, transaction);
     const image = await models.productImage.findOne({
@@ -509,7 +519,8 @@ export async function deleteProductImage(req, res) {
     });
     if (!image) throw new HttpError(404, 'Product image not found');
     // Commit cleanup intent with the DB deletion; storage failures cannot break live references.
-    await queueImageCleanup(image.s3_key, transaction);
+    removedKey = image.s3_key;
+    await queueImageCleanup(removedKey, transaction);
     await image.destroy({ transaction });
     if (image.is_primary) {
       const nextImage = await models.productImage.findOne({
@@ -524,5 +535,6 @@ export async function deleteProductImage(req, res) {
     }
     await publishProductCatalog(productId, transaction);
   });
+  await finishImageCleanup([removedKey]);
   res.status(204).end();
 }
