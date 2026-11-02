@@ -18,12 +18,11 @@ export const listQuerySchema = z
   })
   .strict()
   .refine(
-    (data) =>
-      !(data.roots_only === 'true' && data.parent_category_id !== undefined),
+    (data) => !(data.roots_only === 'true' && data.parent_category_id !== undefined),
     {
       message: 'roots_only cannot be combined with parent_category_id',
       path: ['parent_category_id'],
-    }
+    },
   );
 
 export const categoryIdParamsSchema = z
@@ -61,4 +60,13 @@ export const updateCategorySchema = z
 
 export const treeQuerySchema = z
   .object({ is_active: z.enum(['true', 'false']).optional() })
+  .strict();
+export const deleteCategoryQuerySchema = z
+  .object({
+    expected_fingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    response: z.enum(['summary', 'empty']).optional(),
+  })
   .strict();

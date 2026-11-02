@@ -1,12 +1,15 @@
+import {
+  previewCategoryDeletion,
+  executeCategoryDeletion,
+} from '../../shared/category-deletion.js';
 import { createEntityImageControllers } from '../../shared/entity-image.controller.js';
-import { sequelize } from '../../config/database.js';
 import { queueImageUrlCleanup } from '../../shared/image-storage.js';
+import { sequelize } from '../../config/database.js';
 import { Op } from 'sequelize';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
 
 const Category = models.category;
-const ProductCategory = models.productCategory;
 export const {
   getImage: getCategoryImage,
   uploadImage: uploadCategoryImage,
@@ -190,66 +193,18 @@ export async function updateCategory(req, res) {
   res.json({ data: category });
 }
 
+export async function deletionPreview(req, res) {
+  res.json({ data: await previewCategoryDeletion([getCategoryId(req)]) });
+}
+
 export async function deleteCategory(req, res) {
-  const categoryId = getCategoryId(req);
-
-  try {
-    await sequelize.transaction(async (transaction) => {
-      const category = await findCategory(categoryId, transaction);
-
-      const isSubcategory = category.parent_category_id != null;
-      const entityName = isSubcategory ? 'Subcategory' : 'Category';
-      const entityNameLower = isSubcategory ? 'subcategory' : 'category';
-
-      // Prevent deletion when products are assigned to this category.
-      const productCount = await ProductCategory.count({
-        where: { category_id: categoryId },
-        transaction,
-      });
-
-      if (productCount > 0) {
-        throw new HttpError(
-          409,
-          `Cannot delete this ${entityNameLower} because products are assigned to it. Reassign the products first.`
-        );
-      }
-
-      // A category with subcategories cannot be deleted.
-      // Subcategories themselves can be deleted if they have no products.
-      if (!isSubcategory) {
-        const childCount = await Category.count({
-          where: { parent_category_id: categoryId },
-          transaction,
-        });
-
-        if (childCount > 0) {
-          throw new HttpError(
-            409,
-            'Cannot delete this category because it contains subcategories. Delete or reassign the subcategories first.'
-          );
-        }
-      }
-
-      // Preserve your existing image cleanup process.
-      await queueImageUrlCleanup(category.category_image, transaction);
-
-      await category.destroy({ transaction });
-    });
-
-    // A 204 response must not contain a JSON body.
-    return res.status(204).end();
-  } catch (error) {
-    if (
-      error?.name === 'SequelizeForeignKeyConstraintError' ||
-      error?.original?.code === '23503'
-    ) {
-      throw new HttpError(
-        409,
-        'Cannot delete this category or subcategory because it is still being used. Remove or reassign its relationships first.'
-      );
-    }
-    throw error;
-  }
+  const summary = await executeCategoryDeletion(
+    req,
+    getCategoryId(req),
+    req.validatedQuery?.expected_fingerprint,
+  );
+  if (req.validatedQuery?.response === 'summary') return res.json({ data: summary });
+  return res.status(204).end();
 }
 export async function categoryTree(req, res) {
   const where = {};
