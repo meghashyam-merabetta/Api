@@ -40,8 +40,13 @@ export async function productCatalog(transaction) {
     o.id::text AS offer_id,o.selling_price,o.mrp,
     COALESCE((SELECT sum(greatest(0,i.quantity_on_hand-i.quantity_reserved)) FROM inventory i WHERE i.vendor_product_id=o.id),0)::int AS stock,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name) ORDER BY pc.is_primary DESC,c.sort_order,c.id) FROM product_categories pc JOIN categories c ON c.id=pc.category_id AND c.is_active WHERE pc.product_id=p.id),'[]') AS categories,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]') AS images
-    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active
+    v.use_product_images,
+    CASE WHEN v.use_product_images THEN
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]')
+    ELSE
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('url',vi.image_url,'alt',vi.alt_text) ORDER BY vi.is_primary DESC,vi.sort_order,vi.id) FROM product_variant_images vi WHERE vi.variant_id=v.id),'[]')
+    END AS images
+    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active AND v.deleted_at IS NULL
     JOIN vendor_products o ON o.variant_id=v.id AND o.offer_status='active' AND o.currency='INR' AND o.selling_price>0 AND o.mrp>=o.selling_price
     JOIN vendors vendor ON vendor.id=o.vendor_id AND vendor.vendor_status='active'
     LEFT JOIN brands b ON b.id=p.brand_id
@@ -95,7 +100,8 @@ export async function productCatalog(transaction) {
       mrp: Number(row.mrp),
       stock: row.stock,
       available: row.stock > 0,
-      image: images[0] || 'medicine.png',
+      use_product_images: row.use_product_images,
+      image: images[0] ?? null,
       images,
       rating: 'Not rated',
     };

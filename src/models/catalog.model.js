@@ -34,6 +34,7 @@ export const ProductVariant = sequelize.define(
     id,
     product_id: { type: DataTypes.BIGINT, allowNull: false },
     sku: { type: DataTypes.STRING(100), allowNull: false },
+    use_product_images: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     variant_name: DataTypes.STRING(200),
     barcode: DataTypes.STRING(100),
     weight_grams: DataTypes.INTEGER,
