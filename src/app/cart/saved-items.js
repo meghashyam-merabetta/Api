@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
-import { productCatalog, sellableProduct } from '../products/catalog.js';
+import { catalogProduct, sellableProduct } from '../products/catalog.js';
 
 export function savedItemRoutes(kind) {
   const cart = kind === 'cart';
@@ -51,7 +51,7 @@ export function savedItemRoutes(kind) {
               )
             : cart
               ? [await sellableProduct(id, quantity, transaction)]
-              : (await productCatalog(transaction)).products.filter((p) => p.id === id);
+              : [await catalogProduct(id, transaction)].filter(Boolean);
           if (!products.length) throw new HttpError(422, 'Item is no longer available');
           const [count] = await sequelize.query(
             `SELECT count(*)::int AS total FROM ${table} WHERE customer_id=:customer AND item_id<>:id`,

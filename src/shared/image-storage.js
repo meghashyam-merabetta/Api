@@ -45,6 +45,8 @@ export async function queueImageUrlCleanup(value, transaction) {
 export async function isImageReferenced(key, transaction) {
   if (await models.productImage.count({ where: { s3_key: key }, transaction }))
     return true;
+  if (await models.variantImage.count({ where: { s3_key: key }, transaction }))
+    return true;
   const url = imageUrl(key);
   for (const [model, field] of [
     [models.category, 'category_image'],
@@ -121,12 +123,30 @@ export async function stageImage(key, file, transaction) {
   return { key, journal };
 }
 
-export async function processImageCleanup({ limit = 20 } = {}) {
+export async function finishImageCleanup(keys) {
+  const unique = [...new Set(keys.filter(Boolean))];
+  if (!unique.length) return;
+  try {
+    await processImageCleanup({
+      keys: unique,
+      limit: unique.length,
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    logger.warn({ err: error }, 'Committed image cleanup deferred to worker');
+  }
+}
+
+export async function processImageCleanup({ limit = 20, keys, signal } = {}) {
   let processed = 0;
   for (let index = 0; index < limit; index++) {
+    if (signal?.aborted) break;
     const found = await sequelize.transaction(async (transaction) => {
       const job = await ProductImageCleanup.findOne({
-        where: { not_before: { [Op.lte]: new Date() } },
+        where: {
+          not_before: { [Op.lte]: new Date() },
+          ...(keys ? { s3_key: { [Op.in]: keys } } : {}),
+        },
         order: [['not_before', 'ASC']],
         transaction,
         lock: transaction.LOCK.UPDATE,
@@ -138,6 +158,7 @@ export async function processImageCleanup({ limit = 20 } = {}) {
         if (!(await isImageReferenced(job.s3_key, transaction)))
           await s3.send(
             new DeleteObjectCommand({ Bucket: IMAGE_BUCKET, Key: job.s3_key }),
+            ...(signal ? [{ abortSignal: signal }] : []),
           );
         await job.destroy({ transaction });
         processed++;

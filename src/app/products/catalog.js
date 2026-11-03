@@ -1,3 +1,4 @@
+import { configurationCatalog } from './configuration-catalog.js';
 import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
@@ -40,12 +41,18 @@ export async function productCatalog(transaction) {
     o.id::text AS offer_id,o.selling_price,o.mrp,
     COALESCE((SELECT sum(greatest(0,i.quantity_on_hand-i.quantity_reserved)) FROM inventory i WHERE i.vendor_product_id=o.id),0)::int AS stock,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name) ORDER BY pc.is_primary DESC,c.sort_order,c.id) FROM product_categories pc JOIN categories c ON c.id=pc.category_id AND c.is_active WHERE pc.product_id=p.id),'[]') AS categories,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]') AS images
-    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active
+    v.use_product_images,
+    CASE WHEN v.use_product_images THEN
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]')
+    ELSE
+      COALESCE((SELECT jsonb_agg(jsonb_build_object('url',vi.image_url,'alt',vi.alt_text) ORDER BY vi.is_primary DESC,vi.sort_order,vi.id) FROM product_variant_images vi WHERE vi.variant_id=v.id),'[]')
+    END AS images
+    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active AND v.deleted_at IS NULL
     JOIN vendor_products o ON o.variant_id=v.id AND o.offer_status='active' AND o.currency='INR' AND o.selling_price>0 AND o.mrp>=o.selling_price
     JOIN vendors vendor ON vendor.id=o.vendor_id AND vendor.vendor_status='active'
     LEFT JOIN brands b ON b.id=p.brand_id
-    WHERE p.product_status='active' AND (p.brand_id IS NULL OR b.is_active)
+    WHERE p.product_status='active' AND p.deleted_at IS NULL AND (p.brand_id IS NULL OR b.is_active)
+    ${env.CONFIGURATION_PRODUCTS_ENABLED ? 'AND NOT EXISTS (SELECT 1 FROM product_configuration_links l WHERE l.variant_id=v.id)' : ''}
     ORDER BY p.name,p.id,v.id,o.selling_price,o.id`,
     { type: QueryTypes.SELECT, transaction },
   );
@@ -95,7 +102,8 @@ export async function productCatalog(transaction) {
       mrp: Number(row.mrp),
       stock: row.stock,
       available: row.stock > 0,
-      image: images[0] || 'medicine.png',
+      use_product_images: row.use_product_images,
+      image: images[0] ?? null,
       images,
       rating: 'Not rated',
     };
@@ -109,24 +117,49 @@ export async function productCatalog(transaction) {
       bg: '#F8F3FC',
     })),
     brands,
-    products,
+    products: env.CONFIGURATION_PRODUCTS_ENABLED
+      ? [
+          ...products,
+          ...(await configurationCatalog(transaction, categories, productImageUrl)),
+        ]
+      : products,
     labs: [],
     tests: [],
     offerings: [],
   };
 }
 export async function sellableProduct(id, quantity, transaction) {
-  if (!/^shop:\d+$/.test(id))
+  if (
+    !(env.CONFIGURATION_PRODUCTS_ENABLED ? /^(?:shop|product):\d+$/ : /^shop:\d+$/).test(
+      id,
+    )
+  )
     throw new HttpError(
       422,
       'This product is no longer available. Please choose it again from Products.',
     );
-  const product = (await productCatalog(transaction)).products.find((p) => p.id === id);
+  const product = await catalogProduct(id, transaction);
   if (!product) throw new HttpError(422, 'This product is no longer available.');
   if (!product.available || quantity > product.stock)
     throw new HttpError(
       422,
       `Only ${product.stock} units of ${product.name} are available.`,
     );
+  return product;
+}
+
+export async function catalogProduct(id, transaction) {
+  let lookupId = id;
+  if (env.CONFIGURATION_PRODUCTS_ENABLED && /^shop:\d+$/.test(id)) {
+    const [link] = await sequelize.query(
+      'SELECT l.product_id FROM vendor_products o JOIN product_configuration_links l ON l.variant_id=o.variant_id WHERE o.id=:id',
+      { replacements: { id: id.slice(5) }, type: QueryTypes.SELECT, transaction },
+    );
+    if (link) lookupId = `product:${link.product_id}`;
+  }
+  let product = (await productCatalog(transaction)).products.find(
+    (p) => p.id === lookupId,
+  );
+  if (product && lookupId !== id) product = { ...product, id };
   return product;
 }
