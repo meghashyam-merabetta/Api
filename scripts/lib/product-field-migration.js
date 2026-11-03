@@ -93,13 +93,20 @@ export async function inspectProductFieldStorage(transaction) {
     "SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='products' ORDER BY indexname",
     transaction,
   );
+  const variant_indexes = await raw(
+    "SELECT indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='product_variants' ORDER BY indexname",
+    transaction,
+  );
   const fingerprint = createHash('sha256')
-    .update(JSON.stringify({ columns, snapshots, dependencies, indexes }))
+    .update(
+      JSON.stringify({ columns, snapshots, dependencies, indexes, variant_indexes }),
+    )
     .digest('hex');
   return {
     migrated: state.migrated,
     physical_product_columns: columns.map((c) => c.column_name),
     fields_to_move: extension,
+    variant_indexes,
     conflicts,
     can_apply: !conflicts.length,
     snapshots,
@@ -241,7 +248,7 @@ export async function restoreProductFieldColumns(expectedFingerprint) {
       'RAW',
     );
     await raw(
-      'DROP INDEX variant_configuration_attributes_unique',
+      'DROP INDEX IF EXISTS variant_configuration_attributes_unique',
       transaction,
       {},
       'RAW',
@@ -249,9 +256,19 @@ export async function restoreProductFieldColumns(expectedFingerprint) {
     // Recently deleted internal JSON tuples can still be visited during an index build.
     // Keep the identical uniqueness rule for all real variants without indexing retired metadata.
     for (const c of manifest.variant_combinations)
-      await raw(`CREATE UNIQUE INDEX ${quote(c.name)} ON product_variants(product_id,attributes) WHERE NOT attributes @> '{"__product_store":true}'`,transaction,{},'RAW');
+      await raw(
+        `CREATE UNIQUE INDEX ${quote(c.name)} ON product_variants(product_id,attributes) WHERE NOT attributes @> '{"__product_store":true}'`,
+        transaction,
+        {},
+        'RAW',
+      );
     for (const i of manifest.variant_indexes)
-      await raw(`CREATE UNIQUE INDEX ${quote(i.name)} ON product_variants(product_id,attributes) WHERE NOT attributes @> '{"__product_store":true}'`,transaction,{},'RAW');
+      await raw(
+        `CREATE UNIQUE INDEX ${quote(i.name)} ON product_variants(product_id,attributes) WHERE NOT attributes @> '{"__product_store":true}'`,
+        transaction,
+        {},
+        'RAW',
+      );
     for (const trigger of manifest.triggers) await raw(trigger, transaction, {}, 'RAW');
     for (const index of [
       'product_field_store_owner',

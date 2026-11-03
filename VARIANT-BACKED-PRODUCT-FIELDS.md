@@ -97,3 +97,5 @@ SELECT * FROM public.product_variant_records;
 ```
 
 Existing inventory remains authoritative for independently managed products. Never treat hidden storage rows or legacy parent stock as additional sellable inventory.
+
+Deployment correction: UAT has no attribute-combination UNIQUE constraint and contains archived duplicate combinations. Migration 040 preserves that existing rule instead of introducing a new one; an archived-duplicate regression fixture covers migration and rollback. Existing database check constraints are replayed without adding new price/stock restrictions; API validation is retained.

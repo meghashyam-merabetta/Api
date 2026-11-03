@@ -118,6 +118,17 @@ test(
         'INSERT INTO product_variants(id,product_id,sku,attributes,stock_quantity,regular_price,sale_price) VALUES(7,5000,\'M-SKU\',\'{"Size":"M","Colour":"Blue"}\',30,125.50,100.25)',
       );
       await exec("SELECT setval(pg_get_serial_sequence('product_variants','id'),7,true)");
+      if (process.env.PRODUCT_FIELD_DUPLICATE_FIXTURE === 'true') {
+        await exec(
+          'ALTER TABLE product_variants DROP CONSTRAINT product_variants_product_id_attributes_key',
+        );
+        await exec(`INSERT INTO product_variants(id,product_id,sku,attributes,stock_quantity,deleted_at) VALUES
+          (8,5000,'ARCHIVE-M-1','{"Size":"M","Colour":"Blue"}',0,now()),
+          (9,5000,'ARCHIVE-M-2','{"Size":"M","Colour":"Blue"}',0,now())`);
+        await exec(
+          "SELECT setval(pg_get_serial_sequence('product_variants','id'),9,true)",
+        );
+      }
       oldProducts = (
         await raw('SELECT to_jsonb(p) AS value FROM products p ORDER BY id')
       ).map((r) => r.value);
@@ -165,7 +176,7 @@ test(
           );
           assert.equal(
             (await raw('SELECT count(*)::int n FROM product_variants'))[0].n,
-            1,
+            process.env.PRODUCT_FIELD_DUPLICATE_FIXTURE === 'true' ? 3 : 1,
           );
           await exec('DROP VIEW test_dependent_product_view');
         },
@@ -191,6 +202,15 @@ test(
             'SELECT product_id,attributes FROM product_variants WHERE attributes @> \'{"__product_store":true}\' ORDER BY product_id',
           );
           assert.equal(stored.length, 2);
+          if (process.env.PRODUCT_FIELD_DUPLICATE_FIXTURE === 'true')
+            assert.equal(
+              (
+                await raw(
+                  "SELECT to_regclass('public.variant_configuration_attributes_unique') IS NULL absent",
+                )
+              )[0].absent,
+              true,
+            );
           assert.equal(Object.keys(stored[0].attributes.__product_fields).length, 92);
           assert.equal(stored[0].attributes.__product_fields.stock_quantity, 30);
           assert.equal(stored[0].attributes.__product_fields.reusable, false);
@@ -301,7 +321,7 @@ test(
             'Edited',
           );
           await assert.rejects(() =>
-            exec('UPDATE product_records SET sale_price=2000 WHERE id=5000'),
+            exec("UPDATE product_records SET regular_price='not-a-number' WHERE id=5000"),
           );
           await assert.rejects(
             () =>

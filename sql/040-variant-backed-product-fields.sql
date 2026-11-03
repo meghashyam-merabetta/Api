@@ -51,6 +51,9 @@ BEGIN
  INTO defaults_sql FROM jsonb_array_elements(fields);
  IF NOT 'is_configuration_group'=ANY(extras) THEN defaults_sql:=defaults_sql||',(''is_configuration_group'',to_jsonb(false))'; END IF;
  EXECUTE format('CREATE OR REPLACE FUNCTION public.product_field_defaults() RETURNS jsonb LANGUAGE sql STABLE AS %L','SELECT jsonb_object_agg(k,v) FROM (VALUES '||defaults_sql||') AS d(k,v)');
+ IF EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid='public.product_variants'::regclass AND c.contype='u' AND c.condeferrable)
+ OR EXISTS(SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey::smallint[]) WHERE i.indrelid='public.product_variants'::regclass AND i.indisunique AND i.indpred IS NOT NULL AND a.attname='attributes')
+ THEN RAISE EXCEPTION 'Review deferred/partial variant attribute uniqueness before relocation'; END IF;
  -- Full JSON metadata must not enter the existing variant-combination btree (index row size limit).
  FOR def IN SELECT value FROM jsonb_array_elements(variant_combinations) LOOP
   EXECUTE format('ALTER TABLE public.product_variants DROP CONSTRAINT %I',def.value->>'name');
@@ -58,7 +61,9 @@ BEGIN
  FOR def IN SELECT value FROM jsonb_array_elements(variant_indexes) LOOP
   EXECUTE format('DROP INDEX public.%I',def.value->>'name');
  END LOOP;
+ IF jsonb_array_length(variant_combinations)+jsonb_array_length(variant_indexes)>0 THEN
  CREATE UNIQUE INDEX variant_configuration_attributes_unique ON public.product_variants(product_id,attributes) WHERE NOT attributes @> '{"__product_store":true}';
+ END IF;
  -- One hidden, inactive storage row per product: no duplication across every size.
  INSERT INTO public.product_variants(product_id,sku,attributes,is_active)
  SELECT p.id,'__product_fields__:'||p.id,jsonb_build_object('__product_store',true,'__product_fields',
@@ -141,10 +146,6 @@ BEGIN
  IF actor IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.users WHERE id=actor) THEN RAISE EXCEPTION 'Unknown product actor' USING ERRCODE='23503'; END IF;
  previous_write:=current_setting('catalog.product_field_write',true);
  PERFORM set_config('catalog.product_field_write','true',true);
- IF (payload->>'stock_quantity')::int<0 OR (payload->>'regular_price')::numeric<0
-  OR (payload->>'sale_price')::numeric<0 OR ((payload->>'sale_price') IS NOT NULL AND
-    ((payload->>'regular_price') IS NULL OR (payload->>'sale_price')::numeric>(payload->>'regular_price')::numeric))
- THEN RAISE EXCEPTION 'Invalid product price or stock' USING ERRCODE='23514'; END IF;
  IF TG_OP='INSERT' THEN
   IF NEW.id IS NULL THEN
    INSERT INTO public.products(brand_id,name,slug,description,short_description,product_status,created_at,updated_at)
