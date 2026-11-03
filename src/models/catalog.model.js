@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 const options = {
@@ -34,6 +35,7 @@ export const ProductVariant = sequelize.define(
     id,
     product_id: { type: DataTypes.BIGINT, allowNull: false },
     sku: { type: DataTypes.STRING(100), allowNull: false },
+    use_product_images: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     variant_name: DataTypes.STRING(200),
     barcode: DataTypes.STRING(100),
     weight_grams: DataTypes.INTEGER,
@@ -52,5 +54,12 @@ export const ProductVariant = sequelize.define(
       },
     },
   },
-  { ...options, paranoid: true, deletedAt: 'deleted_at', tableName: 'product_variants' },
+  {
+    ...options,
+    paranoid: true,
+    deletedAt: 'deleted_at',
+    tableName: env.VARIANT_PRODUCT_FIELDS_ENABLED
+      ? 'product_variant_records'
+      : 'product_variants',
+  },
 );

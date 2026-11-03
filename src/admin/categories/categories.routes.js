@@ -8,10 +8,12 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  deletionPreview,
 } from './categories.controller.js';
 
 import {
   treeQuerySchema,
+  deleteCategoryQuerySchema,
   listQuerySchema,
   categoryIdParamsSchema,
   createCategorySchema,
@@ -19,6 +21,13 @@ import {
 } from './categories.schema.js';
 
 export const categoriesRoutes = [
+  {
+    method: 'get',
+    path: '/:categoryId/deletion-preview',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: deletionPreview,
+  },
   {
     method: 'get',
     path: '/:categoryId/image',
@@ -88,6 +97,7 @@ export const categoriesRoutes = [
     path: '/:categoryId',
     params: categoryIdParamsSchema,
     auth: true,
+    query: deleteCategoryQuerySchema,
     handler: deleteCategory,
   },
 ];

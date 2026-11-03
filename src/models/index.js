@@ -1,3 +1,4 @@
+import { VariantImage } from './variant-image.model.js';
 import {
   ProductCatalog,
   ProductCheckout,
@@ -46,6 +47,7 @@ export const models = {
   category: Category,
   productCategory: ProductCategory,
   productImage: ProductImage,
+  variantImage: VariantImage,
   brand: Brand,
   productVariant: ProductVariant,
   variantAttribute: VariantAttribute,

@@ -1,3 +1,18 @@
+import { catalogTransaction, auditContext } from '../../shared/catalog-audit.js';
+import {
+  configurationLink,
+  configurationStock,
+  setConfigurationStock,
+  lockConfigurationGroup,
+  refreshGroupConfigurations,
+  archiveConfigurations,
+} from '../../shared/configuration-products.js';
+import {
+  variantGallery,
+  galleryForConfigurationProduct,
+} from '../../shared/variant-galleries.js';
+import { env } from '../../config/env.js';
+import { variantWithGallery } from '../../shared/variant-galleries.js';
 import { MAX_PRODUCT_IMAGES } from '../../shared/product-images.js';
 import {
   catalogMutation,
@@ -9,13 +24,14 @@ import {
   reserveImage,
   imageUrl,
   queueImageCleanup,
+  finishImageCleanup,
 } from '../../shared/image-storage.js';
 import {
   publishProductCatalog,
   deactivateProductCatalog,
 } from '../../shared/catalog-publisher.js';
 import { normalizePricing, storedCatalogFields } from '../../shared/catalog-fields.js';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
@@ -26,6 +42,7 @@ const Category = models.category;
 const ProductCategory = models.productCategory;
 
 async function findProduct(productId, transaction) {
+  if (transaction) await lockConfigurationGroup(productId, transaction);
   const product = await Product.findByPk(productId, {
     transaction,
     ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
@@ -147,6 +164,15 @@ export async function listProducts(req, res) {
   } = req.validatedQuery;
 
   const where = {};
+  if (env.CONFIGURATION_PRODUCTS_ENABLED) {
+    if (req.validatedQuery.view === 'individual') {
+      where.is_configuration_group = false;
+      where.inventory_managed = true;
+    } else
+      where[Op.and] = literal(
+        'NOT EXISTS (SELECT 1 FROM product_configuration_links l WHERE l.product_id="Product"."id")',
+      );
+  }
 
   if (search) {
     where[Op.or] = [
@@ -190,7 +216,18 @@ export async function listProducts(req, res) {
   });
 
   res.json({
-    data: rows.map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r)),
+    data: await Promise.all(
+      rows.map(async (r) => {
+        const result = r.toJSON();
+        if (env.CONFIGURATION_PRODUCTS_ENABLED && r.inventory_managed) {
+          result.stock_quantity = await configurationStock(r.product_id);
+          const gallery = await galleryForConfigurationProduct(r.product_id);
+          if (gallery) result.images = gallery.effective_images;
+        }
+        return result;
+      }),
+    ),
+
     pagination: {
       total: count,
       limit,
@@ -202,6 +239,34 @@ export async function listProducts(req, res) {
 
 export async function getProduct(req, res) {
   const product = await findProduct(req.validatedParams.productId);
+  if (env.CONFIGURATION_PRODUCTS_ENABLED && product.inventory_managed) {
+    const link = await configurationLink({ productId: product.product_id });
+    let gallery;
+    if (link) {
+      const group = await Product.findByPk(link.group_product_id);
+      const variant = await models.productVariant.findByPk(link.variant_id);
+      if (!group || !variant)
+        throw new HttpError(404, 'Product configuration is unavailable');
+      gallery = await variantGallery(variant, group);
+    }
+    const detail = await Product.findByPk(product.product_id, {
+      include: [
+        ...catalogIncludes(),
+        { model: Category, as: 'categories', through: { attributes: ['is_primary'] } },
+      ],
+    });
+    return res.json({
+      data: {
+        ...detail.toJSON(),
+        stock_quantity: await configurationStock(product.product_id),
+        individual_product_id: String(product.product_id),
+        group_product_id: link ? String(link.group_product_id) : null,
+        source_variant_id: link ? String(link.variant_id) : null,
+        variants: [],
+        ...(gallery ? { gallery, images: gallery.effective_images } : {}),
+      },
+    });
+  }
 
   const result = await Product.findByPk(product.product_id, {
     include: [
@@ -214,6 +279,16 @@ export async function getProduct(req, res) {
     ],
   });
 
+  for (const variant of result.variants ?? []) {
+    const enriched = await variantWithGallery(variant, result);
+    for (const key of [
+      'gallery',
+      'individual_product_id',
+      'group_product_id',
+      'stock_quantity',
+    ])
+      if (Object.hasOwn(enriched, key)) variant.setDataValue(key, enriched[key]);
+  }
   res.json({ data: typeof result?.toJSON === 'function' ? result.toJSON() : result });
 }
 
@@ -244,6 +319,24 @@ export async function createProduct(req, res) {
       { transaction },
     );
 
+    if (env.CONFIGURATION_PRODUCTS_ENABLED) {
+      await created.update(
+        {
+          is_configuration_group: data.product_type === 'variable',
+          inventory_managed: data.product_type !== 'variable',
+          attributes: data.attributes ?? {},
+        },
+        { transaction },
+      );
+      if (created.inventory_managed)
+        await setConfigurationStock(
+          req,
+          created.product_id,
+          data.stock_quantity ?? 0,
+          transaction,
+          true,
+        );
+    }
     if (categoryIds.length > 0) {
       await replaceProductCategories(
         created.product_id,
@@ -261,10 +354,48 @@ export async function createProduct(req, res) {
 }
 
 export async function updateProduct(req, res) {
-  const product = await sequelize.transaction(async (transaction) => {
+  const product = await catalogTransaction(req, async (transaction) => {
     const existing = await findProduct(req.validatedParams.productId, transaction);
+    if (env.CONFIGURATION_PRODUCTS_ENABLED) await auditContext(req, transaction);
 
     const data = normalizePricing(req.validated, existing.toJSON());
+    if (
+      env.CONFIGURATION_PRODUCTS_ENABLED &&
+      data.product_type === 'variable' &&
+      (await configurationLink({ productId: existing.product_id }, transaction))
+    )
+      throw new HttpError(
+        409,
+        'Edit configurations through their existing group; configurations cannot contain nested variants',
+      );
+    if (
+      env.CONFIGURATION_PRODUCTS_ENABLED &&
+      data.product_type === 'simple' &&
+      existing.is_configuration_group
+    ) {
+      if (
+        await models.productVariant.count({
+          where: { product_id: existing.product_id },
+          transaction,
+        })
+      )
+        throw new HttpError(
+          409,
+          'Remove the existing variants before switching to simple',
+        );
+      await existing.update(
+        { is_configuration_group: false, inventory_managed: true },
+        { transaction },
+      );
+      await setConfigurationStock(
+        req,
+        existing.product_id,
+        data.stock_quantity ?? 0,
+        transaction,
+        true,
+      );
+    }
+
     if (Object.hasOwn(data, 'brand_id')) await validateBrand(data.brand_id, transaction);
 
     const fields = [
@@ -283,6 +414,19 @@ export async function updateProduct(req, res) {
       }
     }
 
+    if (
+      env.CONFIGURATION_PRODUCTS_ENABLED &&
+      existing.inventory_managed &&
+      Object.hasOwn(data, 'stock_quantity')
+    )
+      await setConfigurationStock(
+        req,
+        existing.product_id,
+        data.stock_quantity,
+        transaction,
+      );
+    if (env.CONFIGURATION_PRODUCTS_ENABLED && data.attributes !== undefined)
+      existing.attributes = data.attributes;
     await existing.save({ transaction });
 
     if (data.category_ids !== undefined) {
@@ -334,16 +478,73 @@ export async function updateProduct(req, res) {
       }
     }
 
+    const link = await configurationLink({ productId: existing.product_id }, transaction);
+    if (link) {
+      const fields = [
+        'sku',
+        'barcode',
+        'regular_price',
+        'sale_price',
+        'offer_percent',
+        'attributes',
+        'stock_quantity',
+      ];
+      const variant = await models.productVariant.findByPk(link.variant_id, {
+        transaction,
+      });
+      const patch = Object.fromEntries(
+        fields.filter((f) => Object.hasOwn(data, f)).map((f) => [f, data[f]]),
+      );
+      if (Object.hasOwn(data, 'product_status'))
+        patch.is_active = data.product_status === 'active';
+      if (patch.attributes) {
+        const duplicate = await models.productVariant.findOne({
+          where: {
+            product_id: link.group_product_id,
+            attributes: { [Op.eq]: patch.attributes },
+            id: { [Op.ne]: variant.id },
+          },
+          transaction,
+        });
+        if (duplicate)
+          throw new HttpError(409, 'This variant attribute combination already exists');
+      }
+      await variant.update(patch, { transaction });
+      const group = await Product.findByPk(link.group_product_id, { transaction });
+      await refreshGroupConfigurations(req, group, transaction);
+      await publishProductCatalog(link.group_product_id, transaction);
+    } else await refreshGroupConfigurations(req, existing, transaction);
     await publishProductCatalog(existing.product_id, transaction);
     return existing;
   });
 
-  res.json({ data: product });
+  res.json({
+    data:
+      env.CONFIGURATION_PRODUCTS_ENABLED && product.inventory_managed
+        ? {
+            ...product.toJSON(),
+            stock_quantity: await configurationStock(product.product_id),
+          }
+        : product,
+  });
 }
 
 export async function deleteProduct(req, res) {
-  await sequelize.transaction(async (transaction) => {
+  await catalogTransaction(req, async (transaction) => {
     const product = await findProduct(req.validatedParams.productId, transaction);
+    if (env.CONFIGURATION_PRODUCTS_ENABLED) await auditContext(req, transaction);
+    const link = await configurationLink({ productId: product.product_id }, transaction);
+    await archiveConfigurations(
+      req,
+      link?.group_product_id ?? product.product_id,
+      transaction,
+      link?.variant_id,
+    );
+    if (link)
+      await models.productVariant.update(
+        { is_active: false, deleted_at: new Date() },
+        { where: { id: link.variant_id }, transaction },
+      );
     await deactivateProductCatalog(product.product_id, transaction);
     await product.update({ product_status: 'archived' }, { transaction });
     await models.productVariant.update(
@@ -359,7 +560,16 @@ export async function deleteProduct(req, res) {
 // UPLOAD PRODUCT IMAGES
 // ======================================================
 
-export function uploadImagesProduct(req, res, next) {
+async function requireConfigurationGalleryWrite(req) {
+  const link = await configurationLink({ productId: req.validatedParams.productId });
+  if (link)
+    throw new HttpError(
+      409,
+      `Use the existing gallery route /api/admin/products/${link.group_product_id}/variants/${link.variant_id}/images to edit this configuration's images`,
+    );
+}
+export async function uploadImagesProduct(req, res, next) {
+  await requireConfigurationGalleryWrite(req);
   productImageUpload(req, res, async (error) => {
     if (error) return next(new HttpError(400, error.message));
     try {
@@ -422,6 +632,9 @@ export function uploadImagesProduct(req, res, next) {
 // ======================================================
 
 export async function listProductImages(req, res) {
+  await findProduct(req.validatedParams.productId);
+  const gallery = await galleryForConfigurationProduct(req.validatedParams.productId);
+  if (gallery) return res.json({ data: gallery.effective_images });
   const product = await findProduct(req.validatedParams.productId);
 
   const images = await models.productImage.findAll({
@@ -441,6 +654,7 @@ export async function listProductImages(req, res) {
 // ======================================================
 
 export async function setPrimaryProductImage(req, res) {
+  await requireConfigurationGalleryWrite(req);
   const { productId, imageId } = req.validatedParams;
   const image = await sequelize.transaction(async (transaction) => {
     await findProduct(productId, transaction);
@@ -464,9 +678,11 @@ export async function setPrimaryProductImage(req, res) {
 // REPLACE AN EXISTING PRODUCT IMAGE
 // ======================================================
 
-export function replaceProductImage(req, res, next) {
+export async function replaceProductImage(req, res, next) {
+  await requireConfigurationGalleryWrite(req);
   productImageUpload(req, res, async (error) => {
     if (error) return next(new HttpError(400, error.message));
+    let removedKey;
     try {
       const { productId, imageId } = req.validatedParams;
       const files = req.files ?? [];
@@ -482,12 +698,14 @@ export function replaceProductImage(req, res, next) {
         });
         if (!image) throw new HttpError(404, 'Product image not found');
         const { key, journal } = await stageImage(reserved, file, transaction);
-        await queueImageCleanup(image.s3_key, transaction);
+        removedKey = image.s3_key;
+        await queueImageCleanup(removedKey, transaction);
         await image.update({ s3_key: key, image_url: imageUrl(key) }, { transaction });
         await journal.destroy({ transaction });
         await publishProductCatalog(productId, transaction);
         return image;
       });
+      await finishImageCleanup([removedKey]);
       res.json({ data: updated });
     } catch (replaceError) {
       next(replaceError);
@@ -500,7 +718,9 @@ export function replaceProductImage(req, res, next) {
 // ======================================================
 
 export async function deleteProductImage(req, res) {
+  await requireConfigurationGalleryWrite(req);
   const { productId, imageId } = req.validatedParams;
+  let removedKey;
   await sequelize.transaction(async (transaction) => {
     await findProduct(productId, transaction);
     const image = await models.productImage.findOne({
@@ -509,7 +729,8 @@ export async function deleteProductImage(req, res) {
     });
     if (!image) throw new HttpError(404, 'Product image not found');
     // Commit cleanup intent with the DB deletion; storage failures cannot break live references.
-    await queueImageCleanup(image.s3_key, transaction);
+    removedKey = image.s3_key;
+    await queueImageCleanup(removedKey, transaction);
     await image.destroy({ transaction });
     if (image.is_primary) {
       const nextImage = await models.productImage.findOne({
@@ -524,5 +745,6 @@ export async function deleteProductImage(req, res) {
     }
     await publishProductCatalog(productId, transaction);
   });
+  await finishImageCleanup([removedKey]);
   res.status(204).end();
 }

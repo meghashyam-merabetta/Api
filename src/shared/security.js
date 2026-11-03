@@ -48,6 +48,10 @@ export function csrfGuard(req, res, next) {
   }
   // Image uploads and replacements use multipart bodies after the Origin check.
   const imageMultipart =
+    (req.method === 'POST' &&
+      /^\/api\/admin\/products\/[^/]+\/variants\/[^/]+\/images$/.test(req.path)) ||
+    (req.method === 'PUT' &&
+      /^\/api\/admin\/products\/[^/]+\/variants\/[^/]+\/images\/[^/]+$/.test(req.path)) ||
     (req.method === 'POST' && /^\/api\/admin\/products\/[^/]+\/images$/.test(req.path)) ||
     (req.method === 'PUT' &&
       /^\/api\/admin\/products\/[^/]+\/images\/[^/]+$/.test(req.path)) ||

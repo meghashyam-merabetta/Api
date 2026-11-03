@@ -6,9 +6,13 @@ const token = z
   .min(1)
   .max(100)
   .refine((value) => !value.includes(','), 'Each option must be a separate value');
+const attributeName = token.refine(
+  (v) => !['__product_fields', '__product_store'].includes(v),
+  'Reserved internal attribute name',
+);
 const attribute = z
   .object({
-    name: token,
+    name: attributeName,
     values: z
       .array(token)
       .min(1)
@@ -20,13 +24,15 @@ const attribute = z
   })
   .strict();
 const attributeParams = z
-  .object({ attributeId: z.coerce.number().int().positive() })
+  .object({
+    attributeId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  })
   .strict();
 const productParams = z
-  .object({ productId: z.coerce.number().int().positive() })
+  .object({ productId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER) })
   .strict();
 const variantParams = productParams.extend({
-  variantId: z.coerce.number().int().positive(),
+  variantId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 });
 const pagination = z
   .object({
@@ -36,12 +42,17 @@ const pagination = z
   .strict();
 const variant = z
   .object({
-    sku: z.string().trim().min(1).max(100),
+    sku: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .refine((v) => !v.startsWith('__product_fields__:'), 'Reserved storage SKU prefix'),
     variant_name: z.string().trim().min(1).max(200).nullable().optional(),
     barcode: z.string().trim().min(1).max(100).nullable().optional(),
     weight_grams: z.number().int().min(0).max(2147483647).nullable().optional(),
     attributes: z
-      .record(token, token)
+      .record(attributeName, token)
       .refine(
         (value) => Object.keys(value).length > 0 && Object.keys(value).length <= 20,
         'Provide 1–20 attributes',
@@ -66,3 +77,15 @@ export {
   pagination as listVariantQuerySchema,
   variant as createVariantSchema,
 };
+
+export const variantImageParamsSchema = variantParams.extend({
+  imageId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+export const variantImageModeSchema = z
+  .object({ use_product_images: z.boolean() })
+  .strict();
+export const shareVariantImagesSchema = z
+  .object({
+    source_variant_id: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict();

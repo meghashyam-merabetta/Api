@@ -1,3 +1,8 @@
+import {
+  synchronizeConfiguration,
+  archiveConfigurations,
+} from '../../shared/configuration-products.js';
+import { variantWithGallery } from '../../shared/variant-galleries.js';
 import { catalogMutation, sendMutation } from '../../shared/catalog-idempotency.js';
 import { publishProductCatalog } from '../../shared/catalog-publisher.js';
 import { normalizePricing } from '../../shared/catalog-fields.js';
@@ -40,7 +45,7 @@ export async function saveVariant(req, res) {
     req.validated,
     variantId ? 200 : 201,
     async (transaction) => {
-      await product(productId, transaction);
+      const ownerProduct = await product(productId, transaction);
       let existing = variantId
         ? await ProductVariant.findOne({
             where: { id: variantId, product_id: productId },
@@ -87,8 +92,12 @@ export async function saveVariant(req, res) {
             { ...data, product_id: productId },
             { transaction },
           );
+      await synchronizeConfiguration(req, ownerProduct, row, transaction, {
+        initial: !existing,
+        stockChanged: Object.hasOwn(req.validated, 'stock_quantity'),
+      });
       await publishProductCatalog(productId, transaction);
-      return row;
+      return variantWithGallery(row, ownerProduct, transaction);
     },
   );
   sendMutation(res, result);
@@ -159,10 +168,12 @@ export async function getProductVariant(req, res) {
     },
   });
   if (!row) throw new HttpError(404, 'Product variant not found');
-  res.json({ data: row });
+  res.json({
+    data: await variantWithGallery(row, await product(req.validatedParams.productId)),
+  });
 }
 export async function listProductVariants(req, res) {
-  await product(req.validatedParams.productId);
+  const ownerProduct = await product(req.validatedParams.productId);
   const { limit, offset } = req.validatedQuery;
   const { rows, count } = await ProductVariant.findAndCountAll({
     where: { product_id: req.validatedParams.productId },
@@ -174,7 +185,7 @@ export async function listProductVariants(req, res) {
     ],
   });
   res.json({
-    data: rows,
+    data: await Promise.all(rows.map((row) => variantWithGallery(row, ownerProduct))),
     pagination: {
       total: count,
       limit,
@@ -186,6 +197,12 @@ export async function listProductVariants(req, res) {
 export async function deleteProductVariant(req, res) {
   await sequelize.transaction(async (transaction) => {
     await product(req.validatedParams.productId, transaction);
+    await archiveConfigurations(
+      req,
+      req.validatedParams.productId,
+      transaction,
+      req.validatedParams.variantId,
+    );
     const removed = await ProductVariant.destroy({
       where: {
         id: req.validatedParams.variantId,

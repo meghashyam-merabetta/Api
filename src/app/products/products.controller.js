@@ -1,4 +1,4 @@
-import { productCatalog } from './catalog.js';
+import { productCatalog, catalogProduct } from './catalog.js';
 import { HttpError } from '../../shared/errors.js';
 export async function listProducts(req, res) {
   const catalog = await productCatalog();
@@ -15,9 +15,7 @@ export async function listProducts(req, res) {
   res.json({ data: items.slice(offset, offset + limit), total: items.length });
 }
 export async function getProduct(req, res) {
-  const product = (await productCatalog()).products.find(
-    (p) => p.id === req.validatedParams.id,
-  );
+  const product = await catalogProduct(req.validatedParams.id);
   if (!product) throw new HttpError(404, 'Product not found');
   res.json({ data: product });
 }

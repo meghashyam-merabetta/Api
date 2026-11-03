@@ -1,3 +1,5 @@
+import {env} from '../src/config/env.js';
+if(env.VARIANT_PRODUCT_FIELDS_ENABLED)throw Error('Legacy bootstrap is disabled after product-field cutover; use scripts/migrate-product-fields.js.');
 import { readFileSync } from 'node:fs';
 import { sequelize } from '../src/config/database.js';
 import { seedMasters } from './seed-masters.js';
@@ -5,6 +7,8 @@ import { Lab } from '../src/models/lab.model.js';
 import { User } from '../src/models/user.model.js';
 import { Session } from '../src/models/session.model.js';
 try {
+  const [storage]=await sequelize.query("SELECT to_regclass('public.product_records') IS NOT NULL AS active",{type:'SELECT',productStorage:false});
+  if(storage.active)throw Error('Legacy bootstrap is disabled after product-field cutover; use scripts/migrate-product-fields.js.');
   await sequelize.transaction(async transaction => {
     await sequelize.query("SELECT pg_advisory_xact_lock(771209)", { transaction });
     // Create missing authentication tables without altering existing tables.
@@ -83,4 +87,5 @@ try {
   await sequelize.query(readFileSync(new URL('../sql/027-admin-catalog-reliability.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/035-product-specification-fields.sql', import.meta.url), 'utf8'));
   await sequelize.query(readFileSync(new URL('../sql/036-product-soft-delete.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/038-variant-image-galleries.sql', import.meta.url), 'utf8'));
 } finally { await sequelize.close(); }

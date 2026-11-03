@@ -5,6 +5,7 @@ const productStatusSchema = z.enum(['draft', 'active', 'inactive', 'archived']);
 
 export const listQuerySchema = z
   .object({
+    view: z.enum(['groups', 'individual']).default('groups'),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     offset: z.coerce.number().int().min(0).default(0),
     brand_id: z.coerce.number().int().positive().optional(),
@@ -27,6 +28,10 @@ export const productIdParamsSchema = z
 export const createProductSchema = z
   .object({
     ...catalogFields,
+    attributes: z
+      .record(z.string().min(1).max(100), z.string().min(1).max(200))
+      .refine((value) => Object.keys(value).length <= 30)
+      .optional(),
     product_name: z.string().trim().min(1).max(255),
     slug: z
       .string()
@@ -56,6 +61,10 @@ export const createProductSchema = z
 export const updateProductSchema = z
   .object({
     ...catalogFields,
+    attributes: z
+      .record(z.string().min(1).max(100), z.string().min(1).max(200))
+      .refine((value) => Object.keys(value).length <= 30)
+      .optional(),
     product_name: z.string().trim().min(1).max(255).optional(),
     slug: z
       .string()

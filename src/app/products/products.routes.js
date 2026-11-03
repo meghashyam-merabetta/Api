@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { env } from '../../config/env.js';
 import { listProducts, getProduct } from './products.controller.js';
 import { productCatalog } from './catalog.js';
 export const productRoutes = [
@@ -39,7 +40,13 @@ export const productRoutes = [
     method: 'get',
     path: '/:id',
     auth: false,
-    params: z.object({ id: z.string().regex(/^shop:\d+$/) }),
+    params: z.object({
+      id: z
+        .string()
+        .regex(
+          env.CONFIGURATION_PRODUCTS_ENABLED ? /^(?:shop|product):\d+$/ : /^shop:\d+$/,
+        ),
+    }),
     handler: getProduct,
   },
 ];
