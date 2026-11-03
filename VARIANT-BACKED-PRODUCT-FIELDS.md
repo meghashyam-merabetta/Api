@@ -1,6 +1,6 @@
 # Nine-column products with variant-backed extension fields
 
-Implementation prepared on `feat/variant-backed-product-fields-20261103`. Not deployed. No UAT schema/data changes have been applied. This design supersedes the standalone rollout in PR #29.
+Implementation on `feat/variant-backed-product-fields-20261103`. Backend commit `7f7485d` and migration 040 were deployed to user-confirmed UAT on 3 November 2026 under separate application/migration approvals. This design supersedes the standalone rollout in PR #29. Configuration migration 039 and product conversion remain disabled.
 
 ## Physical storage and compatibility
 
@@ -61,7 +61,7 @@ node scripts/migrate-product-fields.js --apply \
 
 `PRODUCT_PG_RESTORE_BIN` can select the installed PostgreSQL client executable. The original bootstrap migrator refuses to run after cutover, preventing it from recreating the dropped columns. Do not manually rerun older product-schema migrations against the new layout.
 
-Read-only UAT preflight on 3 November 2026 confirmed 100 existing columns, the expected 91 extensions, no reported conflicts, 150 products, 176 real variants, 131 inventory rows and 14 orders. These are a snapshot; refresh after backup/maintenance begins. No migration or business mutation was executed on UAT.
+Read-only UAT preflight on 3 November 2026 confirmed 100 existing columns, the expected 91 extensions, no reported conflicts, 150 products, 176 real variants, 131 inventory rows and 14 orders. These are a snapshot; refresh after backup/maintenance begins. That preflight was read-only; the subsequently approved deployment is recorded below.
 
 ## Coordinated rollout and recovery
 
@@ -99,3 +99,11 @@ SELECT * FROM public.product_variant_records;
 Existing inventory remains authoritative for independently managed products. Never treat hidden storage rows or legacy parent stock as additional sellable inventory.
 
 Deployment correction: UAT has no attribute-combination UNIQUE constraint and contains archived duplicate combinations. Migration 040 preserves that existing rule instead of introducing a new one; an archived-duplicate regression fixture covers migration and rollback. Existing database check constraints are replayed without adding new price/stock restrictions; API validation is retained.
+
+## UAT deployment record — 3 November 2026
+
+Release `merabetta-variant-fields-20261103-r2` deployed 28 allowlisted backend files and migration 040 via rsync/SSH, with a verified restricted application/database backup and a pause/reload of only root PM2 server ID 0. All 150 original product records and 176 real variants were verified unchanged before reopening. All 17 baseline business tables were subsequently reconciled against the backup with no missing/modified original rows, except the expected payment polling timestamp. Authenticated admin activity after reopening added a product/variant and images; those records were preserved. `.env`, manifests, dependencies and unrelated source remain unchanged. No migration 039, configuration conversion, extra AWS service or dependency installation was included.
+
+Twenty-six initial API/CMS read checks matched baseline values (two association serialization-order differences were proven harmless); a later 26-request availability run also passed expected statuses. Existing inventory/audit-history URLs for product 998974 still return their pre-deployment 404s. Live write probes were not performed. The detailed deployment evidence is in the original workspace under `deployment-review/variant-backed-fields-2026-11-03/REVIEW.md`.
+
+The first attempted migration rolled back safely on archived duplicate variant combinations because it added an unintended uniqueness rule. The corrected migration preserves only existing uniqueness rules; original unique-layout and archived-duplicate fixtures each passed eight tests. It then deployed successfully. Backups remain in the private remote release directory. Never restore the full old database over newer writes; use reviewed inverse migration and source/runtime rollback with fresh guards.
