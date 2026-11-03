@@ -7,6 +7,8 @@ import { Lab } from '../src/models/lab.model.js';
 import { User } from '../src/models/user.model.js';
 import { Session } from '../src/models/session.model.js';
 try {
+  const [storage]=await sequelize.query("SELECT to_regclass('public.product_records') IS NOT NULL AS active",{type:'SELECT',productStorage:false});
+  if(storage.active)throw Error('Legacy bootstrap is disabled after product-field cutover; use scripts/migrate-product-fields.js.');
   await sequelize.transaction(async transaction => {
     await sequelize.query("SELECT pg_advisory_xact_lock(771209)", { transaction });
     // Create missing authentication tables without altering existing tables.

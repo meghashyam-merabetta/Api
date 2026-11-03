@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 test(
   'all product extension fields survive relocation, unchanged API writes and verified inverse migration',
@@ -220,6 +221,18 @@ test(
             /already installed/,
           );
           env.VARIANT_PRODUCT_FIELDS_ENABLED = true;
+          const bootstrap = spawnSync(
+            process.execPath,
+            ['--import', './test-support/env.js', 'scripts/migrate.js'],
+            {
+              cwd: new URL('..', import.meta.url),
+              env: { ...process.env, VARIANT_PRODUCT_FIELDS_ENABLED: 'false' },
+              encoding: 'utf8',
+              timeout: 15000,
+            },
+          );
+          assert.notEqual(bootstrap.status, 0);
+          assert.match(bootstrap.stderr, /Legacy bootstrap is disabled/);
 
           ok(
             await agent
