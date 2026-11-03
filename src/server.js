@@ -1,3 +1,4 @@
+import { assertProductFieldStorageReady } from './shared/product-storage-readiness.js';
 import { assertConfigurationSchemaReady } from './shared/configuration-products.js';
 import { startImageCleanupWorker } from './shared/image-storage.js';
 import { app } from './app.js';
@@ -8,6 +9,7 @@ import { startCatalogSyncWorker } from './app/redcliffe-labs/catalog.js';
 
 import { startPaymentReconciliation } from './app/orders/reconcile.js';
 await sequelize.authenticate();
+await assertProductFieldStorageReady();
 await assertConfigurationSchemaReady();
 const stopImageCleanupWorker = startImageCleanupWorker();
 const stopPaymentReconciliation = startPaymentReconciliation();

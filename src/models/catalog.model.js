@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 const options = {
@@ -53,5 +54,12 @@ export const ProductVariant = sequelize.define(
       },
     },
   },
-  { ...options, paranoid: true, deletedAt: 'deleted_at', tableName: 'product_variants' },
+  {
+    ...options,
+    paranoid: true,
+    deletedAt: 'deleted_at',
+    tableName: env.VARIANT_PRODUCT_FIELDS_ENABLED
+      ? 'product_variant_records'
+      : 'product_variants',
+  },
 );

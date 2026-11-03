@@ -1,3 +1,4 @@
+import { rewriteProductStorageSql } from '../shared/product-storage-sql.js';
 import { readFileSync } from 'node:fs';
 import { Sequelize } from 'sequelize';
 import { env } from './env.js';
@@ -30,3 +31,15 @@ export const sequelize = new Sequelize(env.DB_NAME, env.DB_USER, env.DB_PASSWORD
       : {}),
   },
 });
+
+// Migrations and explicit physical schema checks must opt out of runtime views.
+const originalQuery = sequelize.query.bind(sequelize);
+sequelize.query = (sql, options = {}) => {
+  const { productStorage, ...queryOptions } = options;
+  return originalQuery(
+    env.VARIANT_PRODUCT_FIELDS_ENABLED && productStorage !== false
+      ? rewriteProductStorageSql(sql)
+      : sql,
+    queryOptions,
+  );
+};

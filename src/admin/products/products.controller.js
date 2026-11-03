@@ -1,4 +1,4 @@
-import { auditContext } from '../../shared/catalog-audit.js';
+import { catalogTransaction, auditContext } from '../../shared/catalog-audit.js';
 import {
   configurationLink,
   configurationStock,
@@ -354,7 +354,7 @@ export async function createProduct(req, res) {
 }
 
 export async function updateProduct(req, res) {
-  const product = await sequelize.transaction(async (transaction) => {
+  const product = await catalogTransaction(req, async (transaction) => {
     const existing = await findProduct(req.validatedParams.productId, transaction);
     if (env.CONFIGURATION_PRODUCTS_ENABLED) await auditContext(req, transaction);
 
@@ -530,7 +530,7 @@ export async function updateProduct(req, res) {
 }
 
 export async function deleteProduct(req, res) {
-  await sequelize.transaction(async (transaction) => {
+  await catalogTransaction(req, async (transaction) => {
     const product = await findProduct(req.validatedParams.productId, transaction);
     if (env.CONFIGURATION_PRODUCTS_ENABLED) await auditContext(req, transaction);
     const link = await configurationLink({ productId: product.product_id }, transaction);

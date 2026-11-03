@@ -1,10 +1,10 @@
 -- Schema only. Existing-data conversion and activation are separately approved.
 DO $$ BEGIN
  IF to_regclass('public.inventory') IS NULL OR to_regclass('public.audit_logs') IS NULL
- OR NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='products' AND column_name='inventory_managed')
+ OR NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('products','product_records') AND column_name='inventory_managed')
  THEN RAISE EXCEPTION 'Independent inventory/audit prerequisite schema 036 is required'; END IF;
 END $$;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS is_configuration_group BOOLEAN NOT NULL DEFAULT FALSE;
+DO $$ BEGIN IF to_regclass('public.product_records') IS NULL THEN ALTER TABLE products ADD COLUMN IF NOT EXISTS is_configuration_group BOOLEAN NOT NULL DEFAULT FALSE; END IF; END $$;
 CREATE TABLE IF NOT EXISTS product_configuration_links (
  variant_id BIGINT PRIMARY KEY REFERENCES product_variants(id),
  product_id BIGINT NOT NULL UNIQUE REFERENCES products(id),

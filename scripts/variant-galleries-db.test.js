@@ -54,6 +54,9 @@ test(
     };
     let product, variants, base, paths;
     try {
+      const runtimeQuery = sequelize.query;
+      sequelize.query = (sql, options = {}) =>
+        runtimeQuery(sql, { ...options, productStorage: false });
       await models.customer.sync();
       await models.user.sync();
       await models.session.sync();
@@ -78,9 +81,31 @@ test(
           'utf8',
         ),
       );
+      if (env.VARIANT_PRODUCT_FIELDS_ENABLED) {
+        await sequelize.query(
+          await readFile(
+            new URL(
+              '../test-support/configuration-inventory-fixtures.sql',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+          { productStorage: false },
+        );
+        await sequelize.transaction(async (transaction) =>
+          sequelize.query(
+            await readFile(
+              new URL('../sql/040-variant-backed-product-fields.sql', import.meta.url),
+              'utf8',
+            ),
+            { transaction, productStorage: false },
+          ),
+        );
+      }
       await sequelize.query(
         'TRUNCATE products,categories,brands,product_catalog,users,vendors,admin_catalog_requests,product_image_cleanup RESTART IDENTITY CASCADE',
       );
+      sequelize.query = runtimeQuery;
       await models.user.create({
         realm: 'admin',
         name: 'Gallery test',

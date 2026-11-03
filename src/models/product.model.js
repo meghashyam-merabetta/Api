@@ -195,7 +195,7 @@ export const Product = sequelize.define(
     },
   },
   {
-    tableName: 'products',
+    tableName: env.VARIANT_PRODUCT_FIELDS_ENABLED ? 'product_records' : 'products',
     timestamps: true,
     paranoid: true,
     underscored: true,

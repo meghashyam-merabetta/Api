@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { createHash } from 'node:crypto';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
@@ -164,9 +165,8 @@ export async function inspectCategoryDeletion(ids, transaction) {
     AND tgfoid=to_regprocedure('public.catalog_category_delete_audit()'))
     AND NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.categories'::regclass
       AND tgname='catalog_audit' AND (tgtype::int & 8) <> 0)
-    AND EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.products'::regclass
-      AND tgname='catalog_audit' AND tgenabled IN ('O','A')) AS audit_ready,
-    (SELECT count(*)=2 FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('products','product_variants') AND column_name='deleted_at') AS soft_delete_ready`,
+    AND (${env.VARIANT_PRODUCT_FIELDS_ENABLED ? "EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.product_records'::regclass AND tgname='write_product_record' AND tgenabled IN ('O','A'))" : "EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.products'::regclass AND tgname='catalog_audit' AND tgenabled IN ('O','A'))"}) AS audit_ready,
+    (SELECT count(*)=2 FROM information_schema.columns WHERE table_schema='public' AND table_name IN (${env.VARIANT_PRODUCT_FIELDS_ENABLED ? "'product_records','product_variant_records'" : "'products','product_variants'"}) AND column_name='deleted_at') AS soft_delete_ready`,
     transaction,
   );
   const scope = {

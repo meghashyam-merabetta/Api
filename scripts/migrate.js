@@ -1,3 +1,5 @@
+import {env} from '../src/config/env.js';
+if(env.VARIANT_PRODUCT_FIELDS_ENABLED)throw Error('Legacy bootstrap is disabled after product-field cutover; use scripts/migrate-product-fields.js.');
 import { readFileSync } from 'node:fs';
 import { sequelize } from '../src/config/database.js';
 import { seedMasters } from './seed-masters.js';

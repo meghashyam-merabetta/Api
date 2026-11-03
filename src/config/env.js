@@ -8,6 +8,10 @@ const secret = z
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    VARIANT_PRODUCT_FIELDS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     CONFIGURATION_PRODUCTS_ENABLED: z
       .enum(['true', 'false'])
       .default('false')

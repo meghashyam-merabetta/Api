@@ -40,6 +40,9 @@ test(
       ids = [];
     const variants = [];
     try {
+      const runtimeQuery = sequelize.query;
+      sequelize.query = (sql, options = {}) =>
+        runtimeQuery(sql, { ...options, productStorage: false });
       await models.customer.sync();
       await models.user.sync();
       await models.session.sync();
@@ -57,6 +60,7 @@ test(
       ])
         await sequelize.query(
           await readFile(new URL('../sql/' + f, import.meta.url), 'utf8'),
+          { productStorage: false },
         );
       await sequelize.query(
         await readFile(
@@ -71,10 +75,43 @@ test(
         '038-variant-image-galleries.sql',
         '039-configuration-product-compatibility.sql',
         '037-recursive-category-deletion-audit.sql',
-      ])
+      ]) {
+        if (
+          env.VARIANT_PRODUCT_FIELDS_ENABLED &&
+          f === '039-configuration-product-compatibility.sql'
+        )
+          continue;
         await sequelize.query(
           await readFile(new URL('../sql/' + f, import.meta.url), 'utf8'),
+          { productStorage: false },
         );
+      }
+      if (env.VARIANT_PRODUCT_FIELDS_ENABLED)
+        await sequelize.query(
+          await readFile(
+            new URL('../sql/040-variant-backed-product-fields.sql', import.meta.url),
+            'utf8',
+          ),
+          { productStorage: false },
+        );
+      if (env.VARIANT_PRODUCT_FIELDS_ENABLED) {
+        await sequelize.query(
+          await readFile(
+            new URL(
+              '../sql/039-configuration-product-compatibility.sql',
+              import.meta.url,
+            ),
+            'utf8',
+          ),
+          { productStorage: false },
+        );
+        const [schema] = await sequelize.query(
+          "SELECT count(*)::int n FROM information_schema.columns WHERE table_schema='public' AND table_name='products'",
+          { type: 'SELECT', productStorage: false },
+        );
+        assert.equal(schema.n, 9);
+      }
+      sequelize.query = runtimeQuery;
       const admin = await models.user.create({
         realm: 'admin',
         name: 'Test',
