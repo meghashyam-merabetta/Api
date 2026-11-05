@@ -185,6 +185,7 @@ async function inventorySummary(productId, transaction) {
     reserved_quantity: 0,
     damaged_quantity: 0,
     in_transit_quantity: 0,
+    minimum_stock_level: 0,
   };
 
   for (const warehouse of warehouses) {
