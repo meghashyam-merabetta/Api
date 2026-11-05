@@ -6,17 +6,17 @@ import { HttpError } from '../../shared/errors.js';
 export async function reserveStock(orderId, items, transaction) {
   const plan = [];
   for (const item of [...items].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (!/^shop:\d+$/.test(item.id))
+    if (!/^product:\d+$/.test(item.id))
       throw new HttpError(422, 'Product inventory is unavailable.');
     const rows = await sequelize.query(
-      'SELECT id,quantity_on_hand,quantity_reserved FROM inventory WHERE vendor_product_id=:offer ORDER BY id FOR UPDATE',
-      { replacements: { offer: item.id.slice(5) }, type: QueryTypes.SELECT, transaction },
+      'SELECT id,available_quantity FROM product_inventory WHERE product_id=:product AND is_active ORDER BY id FOR UPDATE',
+      { replacements: { product: item.id.slice(8) }, type: QueryTypes.SELECT, transaction },
     );
     let remaining = item.quantity;
     for (const row of rows) {
       const quantity = Math.min(
         remaining,
-        Math.max(0, row.quantity_on_hand - row.quantity_reserved),
+        Math.max(0, row.available_quantity),
       );
       if (quantity) plan.push({ inventory: row.id, quantity });
       remaining -= quantity;
@@ -27,23 +27,24 @@ export async function reserveStock(orderId, items, transaction) {
   // No writes before every item is available, including late payment recovery.
   for (const line of plan) {
     await sequelize.query(
-      'UPDATE inventory SET quantity_reserved=quantity_reserved + :quantity,updated_at=now() WHERE id=:inventory',
+      'UPDATE product_inventory SET available_quantity=available_quantity - :quantity,reserved_quantity=reserved_quantity + :quantity,updated_at=now() WHERE id=:inventory',
       { replacements: line, transaction },
     );
     await sequelize.query(
-      "INSERT INTO order_stock_reservations(order_id,inventory_id,quantity,state) VALUES(:order,:inventory,:quantity,'reserved') ON CONFLICT(order_id,inventory_id) DO UPDATE SET quantity=EXCLUDED.quantity,state='reserved',updated_at=now()",
+      "INSERT INTO product_inventory_reservations(order_id,inventory_id,quantity,state) VALUES(:order,:inventory,:quantity,'reserved') ON CONFLICT(order_id,inventory_id) DO UPDATE SET quantity=EXCLUDED.quantity,state='reserved',updated_at=now()",
       { replacements: { ...line, order: orderId }, transaction },
     );
   }
 }
 export async function settleStock(orderId, deduct, transaction) {
   const lines = await sequelize.query(
-    "SELECT r.inventory_id,r.quantity FROM order_stock_reservations r JOIN inventory i ON i.id=r.inventory_id WHERE r.order_id=:order AND r.state='reserved' ORDER BY i.vendor_product_id::text,i.id FOR UPDATE OF i,r",
+    "SELECT r.inventory_id,r.quantity FROM product_inventory_reservations r JOIN product_inventory i ON i.id=r.inventory_id WHERE r.order_id=:order AND r.state='reserved' ORDER BY i.product_id,i.id FOR UPDATE OF i,r",
     { replacements: { order: orderId }, type: QueryTypes.SELECT, transaction },
   );
+  if (!lines.length) throw new HttpError(409, 'Inventory reservation requires review.');
   for (const line of lines) {
     const changed = await sequelize.query(
-      `UPDATE inventory SET quantity_reserved=quantity_reserved - :quantity${deduct ? ',quantity_on_hand=quantity_on_hand - :quantity' : ''},updated_at=now() WHERE id=:inventory AND quantity_reserved>= :quantity AND quantity_on_hand>= :quantity RETURNING id`,
+      `UPDATE product_inventory SET reserved_quantity=reserved_quantity - :quantity${deduct ? ',total_quantity=total_quantity - :quantity' : ',available_quantity=available_quantity + :quantity'},updated_at=now() WHERE id=:inventory AND reserved_quantity>= :quantity AND total_quantity>= :quantity RETURNING id`,
       {
         replacements: { inventory: line.inventory_id, quantity: line.quantity },
         type: QueryTypes.SELECT,
@@ -53,7 +54,7 @@ export async function settleStock(orderId, deduct, transaction) {
     if (!changed.length) throw new HttpError(409, 'Inventory reconciliation required.');
   }
   await sequelize.query(
-    "UPDATE order_stock_reservations SET state=:state,updated_at=now() WHERE order_id=:order AND state='reserved'",
+    "UPDATE product_inventory_reservations SET state=:state,updated_at=now() WHERE order_id=:order AND state='reserved'",
     {
       replacements: { order: orderId, state: deduct ? 'deducted' : 'released' },
       transaction,

@@ -39,7 +39,7 @@ export const productRoutes = [
     method: 'get',
     path: '/:id',
     auth: false,
-    params: z.object({ id: z.string().regex(/^shop:\d+$/) }),
+    params: z.object({ id: z.string().regex(/^product:\d+$/) }),
     handler: getProduct,
   },
 ];

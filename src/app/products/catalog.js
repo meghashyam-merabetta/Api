@@ -32,27 +32,20 @@ export async function productCatalog(transaction) {
     { type: QueryTypes.SELECT, transaction },
   );
   const rows = await sequelize.query(
-    `SELECT p.id::text AS product_id,p.name,p.description,p.short_description,
-    p.brand_id::text,b.name AS brand_name,v.id::text AS variant_id,v.variant_name,v.sku,v.attributes,
-    o.id::text AS offer_id,o.selling_price,o.mrp,
-    COALESCE((SELECT sum(greatest(0,i.quantity_on_hand-i.quantity_reserved)) FROM inventory i WHERE i.vendor_product_id=o.id),0)::int AS stock,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name) ORDER BY pc.is_primary DESC,c.sort_order,c.id) FROM product_categories pc JOIN categories c ON c.id=pc.category_id AND c.is_active WHERE pc.product_id=p.id),'[]') AS categories,
+    `SELECT p.id::text AS product_id,p.product_name AS name,d.full_description AS description,d.short_description,
+    p.brand_id::text,b.name AS brand_name,p.sku,d.specifications AS attributes,
+    p.selling_price,p.mrp,
+    COALESCE((SELECT sum(greatest(0,i.available_quantity)) FROM product_inventory i WHERE i.product_id=p.id AND i.is_active),0)::int AS stock,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name) ORDER BY CASE WHEN c.id=p.subcategory_id THEN 0 ELSE 1 END,c.id) FROM categories c WHERE c.id IN (p.category_id,p.subcategory_id) AND c.is_active),'[]') AS categories,
     COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]') AS images
-    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active
-    JOIN vendor_products o ON o.variant_id=v.id AND o.offer_status='active' AND o.currency='INR' AND o.selling_price>0 AND o.mrp>=o.selling_price
-    JOIN vendors vendor ON vendor.id=o.vendor_id AND vendor.vendor_status='active'
+    FROM products p LEFT JOIN product_details d ON d.product_id=p.id
     LEFT JOIN brands b ON b.id=p.brand_id
-    WHERE p.product_status='active' AND (p.brand_id IS NULL OR b.is_active)
-    ORDER BY p.name,p.id,v.id,o.selling_price,o.id`,
+    WHERE p.product_status='active' AND p.is_active AND NOT p.is_deleted
+      AND p.selling_price>0 AND p.mrp>=p.selling_price
+    ORDER BY p.product_name,p.id`,
     { type: QueryTypes.SELECT, transaction },
   );
-  const grouped = new Map();
-  for (const row of rows) {
-    if (!row.categories.length) continue;
-    const prior = grouped.get(row.variant_id);
-    if (!prior || (prior.stock === 0 && row.stock > 0)) grouped.set(row.variant_id, row);
-  }
-  const products = [...grouped.values()].map((row) => {
+  const products = rows.filter((row) => row.categories.length).map((row) => {
     const images = [...new Set(row.images.map((i) => i.url).filter(Boolean).map(productImageUrl))].slice(0, 6);
     const categoryIds = new Set(row.categories.map((c) => c.id));
     for (const id of [...categoryIds]) {
@@ -63,24 +56,22 @@ export async function productCatalog(transaction) {
       }
     }
     return {
-      id: 'shop:' + row.offer_id,
+      id: 'product:' + row.product_id,
       productId: row.product_id,
-      variantId: row.variant_id,
       name: row.name.trim(),
       subtitle:
         row.short_description?.trim() ||
-        row.variant_name ||
         row.brand_name ||
         row.name.trim(),
       description: row.description || row.short_description || '',
       brandId: row.brand_id,
       brandName: row.brand_name || '',
-      variantName: row.variant_name || '',
+      variantName: '',
       sku: row.sku,
       attributes: row.attributes,
       categoryId: row.categories[0].id,
       categoryIds: [...categoryIds],
-      categories: row.categories.map((c) => c.name),
+      categories: [...categoryIds].map((id) => categories.find((c) => c.id === id)?.name).filter(Boolean),
       price: Number(row.selling_price),
       mrp: Number(row.mrp),
       stock: row.stock,
@@ -106,7 +97,7 @@ export async function productCatalog(transaction) {
   };
 }
 export async function sellableProduct(id, quantity, transaction) {
-  if (!/^shop:\d+$/.test(id))
+  if (!/^product:\d+$/.test(id))
     throw new HttpError(
       422,
       'This product is no longer available. Please choose it again from Products.',
