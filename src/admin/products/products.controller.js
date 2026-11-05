@@ -389,38 +389,71 @@ async function createInventory(productId, input, transaction) {
   );
 }
 
-async function inventoryFor(id, transaction) {
+async function inventoriesFor(productIds, transaction) {
+  const result = new Map();
+
+  for (const productId of productIds) {
+    result.set(String(productId), {
+      total_quantity: 0,
+      available_quantity: 0,
+      reserved_quantity: 0,
+      damaged_quantity: 0,
+      in_transit_quantity: 0,
+      minimum_stock_level: 0,
+      warehouses: [],
+    });
+  }
+
+  if (!productIds.length) return result;
+
   const warehouses = await query(
     `
-    SELECT i.*, w.is_active AS warehouse_active
+    SELECT
+      i.product_id::text AS product_id,
+      i.warehouse_id::text AS warehouse_id,
+      w.warehouse_code,
+      w.warehouse_name,
+      i.total_quantity,
+      i.available_quantity,
+      i.reserved_quantity,
+      i.damaged_quantity,
+      i.in_transit_quantity,
+      i.minimum_stock_level
     FROM public.product_inventory i JOIN public.warehouses w ON w.id=i.warehouse_id
-    WHERE i.product_id = :id
-    ORDER BY i.warehouse_id
+    WHERE i.product_id IN (:productIds)
+      AND i.is_active = true
+      AND w.is_active = true
+    ORDER BY i.product_id, i.warehouse_id
     `,
-    { id },
+    { productIds },
     transaction,
   );
 
-  const summary = {
-    total_quantity: 0,
-    available_quantity: 0,
-    reserved_quantity: 0,
-    damaged_quantity: 0,
-    in_transit_quantity: 0,
-  };
-
   for (const warehouse of warehouses) {
-    if (!warehouse.is_active || !warehouse.warehouse_active) continue;
+    const summary = result.get(String(warehouse.product_id));
+    if (!summary) continue;
 
-    for (const field of Object.keys(summary)) {
+    for (const field of [
+      'total_quantity',
+      'available_quantity',
+      'reserved_quantity',
+      'damaged_quantity',
+      'in_transit_quantity',
+      'minimum_stock_level',
+    ]) {
       summary[field] += Number(warehouse[field] ?? 0);
     }
+
+    const { product_id: _productId, ...inventoryRow } = warehouse;
+    summary.warehouses.push(inventoryRow);
   }
 
-  return {
-    ...summary,
-    warehouses,
-  };
+  return result;
+}
+
+async function inventoryFor(id, transaction) {
+  const inventories = await inventoriesFor([id], transaction);
+  return inventories.get(String(id));
 }
 
 // =====================================================
@@ -472,7 +505,10 @@ function productResponse(product, images = [], inventory) {
   return {
     ...record,
 
-    stock_quantity: Number(warehouse_available ?? record.stock_quantity ?? 0),
+    inventory_managed: true,
+    stock_quantity: Number(
+      inventory?.available_quantity ?? warehouse_available ?? record.stock_quantity ?? 0,
+    ),
 
     details: extra,
     images,
@@ -487,7 +523,15 @@ function productResponse(product, images = [], inventory) {
 
     description: extra.full_description ?? null,
 
-    ...(inventory ? { inventory } : {}),
+    inventory: inventory ?? {
+      total_quantity: 0,
+      available_quantity: 0,
+      reserved_quantity: 0,
+      damaged_quantity: 0,
+      in_transit_quantity: 0,
+      minimum_stock_level: 0,
+      warehouses: [],
+    },
   };
 }
 
@@ -500,17 +544,7 @@ async function getFullProduct(id, transaction) {
     `
     SELECT
       p.*,
-      (to_jsonb(d) - 'product_id') AS details,
-
-      COALESCE(
-        (
-          SELECT SUM(available_quantity)::int
-          FROM public.product_inventory i JOIN public.warehouses w ON w.id=i.warehouse_id
-          WHERE i.product_id = p.id
-            AND i.is_active = true AND w.is_active = true
-        ),
-        0
-      ) AS warehouse_available
+      (to_jsonb(d) - 'product_id') AS details
 
     FROM public.products p
 
@@ -613,17 +647,7 @@ export async function listProducts(req, res) {
     `
     SELECT
       p.*,
-      (to_jsonb(d) - 'product_id') AS details,
-
-      COALESCE(
-        (
-          SELECT SUM(available_quantity)::int
-          FROM public.product_inventory i JOIN public.warehouses w ON w.id=i.warehouse_id
-          WHERE i.product_id = p.id
-            AND i.is_active = true AND w.is_active = true
-        ),
-        0
-      ) AS warehouse_available
+      (to_jsonb(d) - 'product_id') AS details
 
     ${from}
 
@@ -636,9 +660,16 @@ export async function listProducts(req, res) {
   );
 
   const images = await loadImages(rows.map((row) => row.id));
+  const inventories = await inventoriesFor(rows.map((row) => row.id));
 
   res.json({
-    data: rows.map((row) => productResponse(row, images.get(String(row.id)) ?? [])),
+    data: rows.map((row) =>
+      productResponse(
+        row,
+        images.get(String(row.id)) ?? [],
+        inventories.get(String(row.id)),
+      ),
+    ),
 
     pagination: {
       total,
