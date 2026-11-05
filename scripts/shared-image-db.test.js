@@ -60,6 +60,11 @@ test(
         '022-product-images.sql',
         '027-admin-catalog-reliability.sql',
         '035-product-specification-fields.sql',
+        '035-admin-integration-gaps.sql',
+        '036-independent-products-audit.sql',
+        '036-product-soft-delete.sql',
+        '038-variant-image-galleries.sql',
+        '037-recursive-category-deletion-audit.sql',
       ]) {
         await sequelize.query(
           await readFile(new URL(`../sql/${file}`, import.meta.url), 'utf8'),
@@ -187,6 +192,7 @@ test(
       await processImageCleanup();
       assert.equal(objects.size, 1);
       assert.ok(objects.has(replacementKey));
+      failDelete = true;
       assert.equal((await json('delete', categoryPath)).status, 204);
       assert.equal(
         (await agent.get(`/api/admin${categoryPath}`)).body.data.image_url,
@@ -223,7 +229,9 @@ test(
       assert.equal((await json('delete', `/categories/${categoryId}`)).status, 204);
       assert.equal((await json('delete', `/brands/${brandId}`)).status, 204);
       await processImageCleanup();
-      assert.equal(objects.size, 0);
+      // Whole-category deletion retains its image as audit history; the dedicated
+      // image DELETE endpoint above still removes unreferenced storage objects.
+      assert.equal(objects.size, 1);
       assert.equal(await ProductImageCleanup.count(), 0);
     } finally {
       s3.send = send;

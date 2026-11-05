@@ -13,7 +13,9 @@ import { reserveStock, settleStock } from './inventory.js';
 import { sellableProduct } from '../products/catalog.js';
 import { paymentReturnUrl } from '../hdfc/return-token.js';
 export function isTestCheckout(row) {
-  return row.payload?.paymentEnvironment === 'sandbox' || row.payload?.isTestOrder === true;
+  return (
+    row.payload?.paymentEnvironment === 'sandbox' || row.payload?.isTestOrder === true
+  );
 }
 export function paise(value) {
   const text = String(value);
@@ -35,7 +37,12 @@ export function verifiedStatus(row, data) {
       'Payment details could not be verified. Please contact support.',
     );
   // Gateway environment, not Node runtime mode, separates UAT from live payments.
-  if (data.status === 'CHARGED' && !isLivePayment(row, data) && !isSandboxPayment(row, data)) return 'FAILED';
+  if (
+    data.status === 'CHARGED' &&
+    !isLivePayment(row, data) &&
+    !isSandboxPayment(row, data)
+  )
+    return 'FAILED';
   return data.status === 'CHARGED'
     ? 'CHARGED'
     : ['AUTHENTICATION_FAILED', 'AUTHORIZATION_FAILED', 'JUSPAY_DECLINED'].includes(
@@ -45,46 +52,85 @@ export function verifiedStatus(row, data) {
       : 'PENDING';
 }
 export function isSandboxPayment(row, data) {
-  if (env.HDFC_ENVIRONMENT !== 'sandbox'
-    || row.payload?.paymentEnvironment !== 'sandbox'
-    || typeof data.txn_id !== 'string' || !data.txn_id.trim()) return false;
+  if (
+    env.HDFC_ENVIRONMENT !== 'sandbox' ||
+    row.payload?.paymentEnvironment !== 'sandbox' ||
+    typeof data.txn_id !== 'string' ||
+    !data.txn_id.trim()
+  )
+    return false;
   try {
     if (!row.payment_url && row.payment_status === 'CHARGED') return true;
     const url = new URL(row.payment_url);
-    return url.origin === 'https://smartgateway.hdfcuat.bank.in' && !url.username && !url.password;
-  } catch { return false; }
+    return (
+      url.origin === 'https://smartgateway.hdfcuat.bank.in' &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
 }
 export function isLivePayment(row, data) {
-  const gateway = String(data.txn_detail?.gateway || data.gateway || '').trim().toUpperCase();
-  const test = value => value === true || value === 'true' || value === 1 || value === '1';
-  return env.HDFC_ENVIRONMENT === 'production'
-    && row.payload?.paymentEnvironment !== 'sandbox'
-    && !String(row.payment_url || '').includes('hdfcuat.')
-    && !!gateway && !['DUMMY', 'TEST', 'SANDBOX'].includes(gateway)
-    && String(data.gateway_id) !== '100' && String(data.txn_detail?.gateway_id) !== '100'
-    && !test(data.test_mode) && !test(data.txn_detail?.test_mode)
-    && typeof data.txn_id === 'string' && !!data.txn_id.trim();
+  const gateway = String(data.txn_detail?.gateway || data.gateway || '')
+    .trim()
+    .toUpperCase();
+  const test = (value) =>
+    value === true || value === 'true' || value === 1 || value === '1';
+  return (
+    env.HDFC_ENVIRONMENT === 'production' &&
+    row.payload?.paymentEnvironment !== 'sandbox' &&
+    !String(row.payment_url || '').includes('hdfcuat.') &&
+    !!gateway &&
+    !['DUMMY', 'TEST', 'SANDBOX'].includes(gateway) &&
+    String(data.gateway_id) !== '100' &&
+    String(data.txn_detail?.gateway_id) !== '100' &&
+    !test(data.test_mode) &&
+    !test(data.txn_detail?.test_mode) &&
+    typeof data.txn_id === 'string' &&
+    !!data.txn_id.trim()
+  );
 }
 // Called under the checkout row lock, in the same transaction as stock settlement.
 async function promoteCheckout(id, transaction) {
-  await sequelize.query(
-    `INSERT INTO orders SELECT * FROM product_checkouts WHERE id=:id AND payment_status IN ('CHARGED','COD')
-       AND COALESCE(payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(payload->>'isTestOrder','false')<>'true'
+  const [promoted] = await sequelize.query(
+    `INSERT INTO orders(id,customer_id,request_key,fingerprint,amount_paise,currency,payment_status,session_state,payment_url,payment_expiry,payload,transaction_id,last_error,created_at,updated_at,stock_state,payment_checked_at,order_number)
+       SELECT id,customer_id,request_key,fingerprint,amount_paise,currency,payment_status,session_state,payment_url,payment_expiry,payload,transaction_id,last_error,created_at,updated_at,stock_state,payment_checked_at,order_number FROM product_checkouts WHERE id=:id AND payment_status IN ('CHARGED','COD')
+       AND COALESCE(payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(payload->>'isTestOrder','false')<>'true' AND COALESCE(payload->>'fulfillmentBlocked','false')<>'true'
      ON CONFLICT(id) DO UPDATE SET payment_status=EXCLUDED.payment_status,stock_state=EXCLUDED.stock_state,
-       payload=EXCLUDED.payload,payment_url=EXCLUDED.payment_url,transaction_id=EXCLUDED.transaction_id,updated_at=EXCLUDED.updated_at`,
-    { replacements: { id }, transaction },
+       payload=EXCLUDED.payload,payment_url=EXCLUDED.payment_url,transaction_id=EXCLUDED.transaction_id,updated_at=EXCLUDED.updated_at RETURNING id`,
+    { replacements: { id }, type: QueryTypes.SELECT, transaction },
   );
-  const [checkout] = await sequelize.query('SELECT payload FROM product_checkouts WHERE id=:id', { replacements: { id }, type: QueryTypes.SELECT, transaction });
+  if (!promoted) return;
+  const [checkout] = await sequelize.query(
+    'SELECT payload FROM product_checkouts WHERE id=:id',
+    { replacements: { id }, type: QueryTypes.SELECT, transaction },
+  );
   for (const item of checkout.payload.items) {
     await sequelize.query(
-      'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot) VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb)) ON CONFLICT(order_id,product_id) DO NOTHING',
-      { replacements: { id, product: item.id, qty: item.quantity, unit: paise(item.snapshot.price), snapshot: JSON.stringify(item.snapshot) }, transaction },
+      'INSERT INTO order_details(order_id,product_id,quantity,unit_price_paise,snapshot' +
+        ',independent_product_id' +
+        ') VALUES(:id,:product,:qty,:unit,CAST(:snapshot AS jsonb)' +
+        ',:exactProduct' +
+        ') ON CONFLICT(order_id,product_id) DO NOTHING',
+      {
+        replacements: {
+          id,
+          product: item.id,
+          exactProduct: item.snapshot.productId ?? null,
+          qty: item.quantity,
+          unit: paise(item.snapshot.price),
+          snapshot: JSON.stringify(item.snapshot),
+        },
+        transaction,
+      },
     );
   }
 }
 export async function findOrder(id, customer) {
   const [row] = await sequelize.query(
-    'SELECT * FROM product_checkouts WHERE id=:id' + (customer ? ' AND customer_id=:customer' : ''),
+    'SELECT * FROM product_checkouts WHERE id=:id' +
+      (customer ? ' AND customer_id=:customer' : ''),
     { replacements: { id, customer }, type: QueryTypes.SELECT },
   );
   if (!row) throw new HttpError(404, 'Order not found');
@@ -96,18 +142,24 @@ export async function syncOrder(row, { force = false } = {}) {
   const data = await gatewayRequest('/orders/' + row.id, row.customer_id);
   const status = verifiedStatus(row, data);
   if (row.payment_status === 'CHARGED' && status !== 'CHARGED')
-    throw new HttpError(409, 'Payment status changed. Please contact support before fulfilment.');
+    throw new HttpError(
+      409,
+      'Payment status changed. Please contact support before fulfilment.',
+    );
   await applyPaymentStatus(row.id, data);
 
   return findOrder(row.id, row.customer_id);
 }
 export async function applyPaymentStatus(id, data) {
   return sequelize.transaction(async (transaction) => {
-    const [row] = await sequelize.query('SELECT * FROM product_checkouts WHERE id=:id FOR UPDATE', {
-      replacements: { id },
-      type: QueryTypes.SELECT,
-      transaction,
-    });
+    const [row] = await sequelize.query(
+      'SELECT * FROM product_checkouts WHERE id=:id FOR UPDATE',
+      {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+        transaction,
+      },
+    );
     if (!row) throw new HttpError(404, 'Order not found');
     if (row.payment_status === 'COD') return row;
     const status = verifiedStatus(row, data);
@@ -118,13 +170,15 @@ export async function applyPaymentStatus(id, data) {
       await settleStock(row.id, false, transaction);
       stock = 'released';
     }
-    if (status === 'CHARGED' && !testOrder) {
+    if (status === 'CHARGED' && row.payload?.cancelled) {
+      stock = 'review';
+    } else if (status === 'CHARGED' && !testOrder) {
       if (stock === 'released') {
         try {
           await reserveStock(row.id, row.payload.items, transaction);
           stock = 'reserved';
         } catch (error) {
-          if (error.status !== 409) throw error;
+          if (![409, 422].includes(error.status)) throw error;
           stock = 'review';
         }
       }
@@ -150,7 +204,19 @@ export async function applyPaymentStatus(id, data) {
           : 'Payment pending';
     const payment =
       status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending';
-    const payload = { ...row.payload, isTestOrder: testOrder, fulfillmentBlocked: testOrder, status: testOrder && status === 'CHARGED' ? 'Test payment successful - not for fulfilment' : data.status === 'CHARGED' && status === 'FAILED' ? 'Payment not verified' : label, paymentStatus: payment };
+    const payload = {
+      ...row.payload,
+      isTestOrder: testOrder,
+      fulfillmentBlocked:
+        testOrder || stock === 'review' || row.payload?.cancelled === true,
+      status:
+        testOrder && status === 'CHARGED'
+          ? 'Test payment successful - not for fulfilment'
+          : data.status === 'CHARGED' && status === 'FAILED'
+            ? 'Payment not verified'
+            : label,
+      paymentStatus: payment,
+    };
     const url =
       status === 'FAILED' || status === 'CHARGED'
         ? null
@@ -184,7 +250,10 @@ export function orderView(row) {
     ...row.payload,
     orderNumber: row.order_number || row.id,
     isTestOrder: isTestCheckout(row),
-    fulfillmentBlocked: isTestCheckout(row),
+    fulfillmentBlocked:
+      isTestCheckout(row) ||
+      row.payload?.fulfillmentBlocked === true ||
+      row.stock_state === 'review',
     paymentReturnUrl: row.payload?.paymentReturnUrl || env.HDFC_RETURN_URL || null,
     receiptUrl: row.payment_status === 'CHARGED' ? paymentReturnUrl(row) : null,
     paymentUrl: ['CHARGED', 'FAILED'].includes(row.payment_status)
@@ -243,16 +312,29 @@ export async function createOrder(req, res) {
     const coupon = await resolveCoupon(b.couponCode, 'products', transaction);
     const discount = couponDiscount(subtotal, coupon);
     const pricingSettings = await readPricingSettings(transaction);
-    const delivery = chargeBelow(subtotal, pricingSettings.product_delivery_below_paise, pricingSettings.product_delivery_charge_paise);
-    const handling = chargeBelow(subtotal, pricingSettings.product_handling_below_paise, pricingSettings.product_handling_charge_paise);
+    const delivery = chargeBelow(
+      subtotal,
+      pricingSettings.product_delivery_below_paise,
+      pricingSettings.product_delivery_charge_paise,
+    );
+    const handling = chargeBelow(
+      subtotal,
+      pricingSettings.product_handling_below_paise,
+      pricingSettings.product_handling_charge_paise,
+    );
     const total = subtotal - discount + delivery + handling;
     const id = await nextOrderId(transaction);
     const payload = {
       id,
       kind: 'products',
+      inventorySchema: 'team-v1',
       paymentReturnUrl: paymentReturnUrl({ id }),
       date: new Date().toISOString(),
-      status: cod ? (testOrder ? 'Test order - not for fulfilment' : 'Confirmed') : 'Payment pending',
+      status: cod
+        ? testOrder
+          ? 'Test order - not for fulfilment'
+          : 'Confirmed'
+        : 'Payment pending',
       paymentMethod: cod ? 'cod' : 'online',
       paymentEnvironment: env.HDFC_ENVIRONMENT,
       isTestOrder: testOrder,
@@ -298,7 +380,10 @@ export async function createOrder(req, res) {
     if (!testOrder) await reserveStock(id, items, transaction);
     if (cod) {
       if (!testOrder) await settleStock(id, true, transaction);
-      await sequelize.query("UPDATE product_checkouts SET payment_status='COD',session_state='not_required',stock_state=:stock WHERE id=:id", { replacements: { id, stock: testOrder ? 'released' : 'deducted' }, transaction });
+      await sequelize.query(
+        "UPDATE product_checkouts SET payment_status='COD',session_state='not_required',stock_state=:stock WHERE id=:id",
+        { replacements: { id, stock: testOrder ? 'released' : 'deducted' }, transaction },
+      );
     }
     if (cod && !testOrder) await promoteCheckout(id, transaction);
     row = {
@@ -318,10 +403,16 @@ export async function createOrder(req, res) {
       row = await syncOrder(row);
       if (row.payment_url || ['CHARGED', 'FAILED'].includes(row.payment_status))
         return res.json(orderView(row));
-      throw new HttpError(503, 'Payment is still being verified. Your cart is unchanged. Please try again later.');
+      throw new HttpError(
+        503,
+        'Payment is still being verified. Your cart is unchanged. Please try again later.',
+      );
     } catch (error) {
       if (error.gatewayStatus !== 404) throw error;
-      await sequelize.query("UPDATE product_checkouts SET session_state='created',last_error=NULL WHERE id=:id AND session_state='unknown'", { replacements: { id: row.id } });
+      await sequelize.query(
+        "UPDATE product_checkouts SET session_state='created',last_error=NULL WHERE id=:id AND session_state='unknown'",
+        { replacements: { id: row.id } },
+      );
     }
   }
   const claim = await sequelize.query(
@@ -366,10 +457,21 @@ export async function createOrder(req, res) {
     const rejected = [401, 403].includes(error.gatewayStatus);
     await sequelize.query(
       'UPDATE product_checkouts SET session_state=:state,last_error=:error,updated_at=now() WHERE id=:id',
-      { replacements: { id: row.id, state: rejected ? 'created' : 'unknown', error: rejected ? 'Gateway authentication rejected' : 'Gateway session unverified' } },
+      {
+        replacements: {
+          id: row.id,
+          state: rejected ? 'created' : 'unknown',
+          error: rejected
+            ? 'Gateway authentication rejected'
+            : 'Gateway session unverified',
+        },
+      },
     );
     if (error instanceof HttpError) throw error;
-    throw new HttpError(502, 'Could not open HDFC payment. Your cart is unchanged. Please try again later.');
+    throw new HttpError(
+      502,
+      'Could not open HDFC payment. Your cart is unchanged. Please try again later.',
+    );
   }
   row = await findOrder(row.id, customer.id);
   res.status(row.payment_url ? 201 : 202).json(orderView(row));

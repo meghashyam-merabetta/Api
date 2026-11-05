@@ -15,9 +15,10 @@ export async function listProducts(req, res) {
   res.json({ data: items.slice(offset, offset + limit), total: items.length });
 }
 export async function getProduct(req, res) {
-  const product = (await productCatalog()).products.find(
-    (p) => p.id === req.validatedParams.id,
-  );
+  const selectedId = /^\d+$/.test(req.validatedParams.id)
+    ? 'product:' + req.validatedParams.id
+    : req.validatedParams.id;
+  const product = (await productCatalog()).products.find((p) => p.id === selectedId);
   if (!product) throw new HttpError(404, 'Product not found');
   res.json({ data: product });
 }

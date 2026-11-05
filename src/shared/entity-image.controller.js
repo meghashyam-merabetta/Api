@@ -1,4 +1,4 @@
-import { sequelize } from '../config/database.js';
+import { catalogTransaction } from './catalog-audit.js';
 import { HttpError } from './errors.js';
 import { createImageUpload } from './image_upload.js';
 import {
@@ -6,6 +6,8 @@ import {
   queueImageUrlCleanup,
   reserveImage,
   stageImage,
+  managedImageKeyFromUrl,
+  finishImageCleanup,
 } from './image-storage.js';
 
 // Attach one managed image to a model's existing nullable URL column.
@@ -39,14 +41,17 @@ export function createEntityImageControllers({
     const file = req.files[0];
     // Commit the recovery journal before acquiring the parent-row transaction.
     const reserved = await reserveImage(resource, id, file);
-    const row = await sequelize.transaction(async (transaction) => {
+    let removedKey;
+    const row = await catalogTransaction(req, async (transaction) => {
       const current = await find(id, transaction);
       const { key, journal } = await stageImage(reserved, file, transaction);
       await queueImageUrlCleanup(current[imageField], transaction);
+      removedKey = managedImageKeyFromUrl(current[imageField]);
       await current.update({ [imageField]: imageUrl(key) }, { transaction });
       await journal.destroy({ transaction });
       return current;
     });
+    await finishImageCleanup([removedKey]);
     res.status(req.method === 'POST' ? 201 : 200).json({ data: view(row) });
   };
   return {
@@ -55,11 +60,14 @@ export function createEntityImageControllers({
     },
     uploadImage: upload,
     deleteImage: async (req, res) => {
-      await sequelize.transaction(async (transaction) => {
+      const removedKey = await catalogTransaction(req, async (transaction) => {
         const row = await find(req.validatedParams[idParam], transaction);
+        const key = managedImageKeyFromUrl(row[imageField]);
         await queueImageUrlCleanup(row[imageField], transaction);
         await row.update({ [imageField]: null }, { transaction });
+        return key;
       });
+      await finishImageCleanup([removedKey]);
       res.status(204).end();
     },
   };

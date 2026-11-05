@@ -1,189 +1,159 @@
+
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
-import { effectivePrice } from '../shared/catalog-fields.js';
+
+// One row in products = one independent purchasable variant.
+// The PostgreSQL primary key is products.id.
 
 export const Product = sequelize.define(
   'Product',
   {
-    product_code: { type: DataTypes.STRING(100), allowNull: true },
-    sku: { type: DataTypes.STRING(100), allowNull: true },
-    barcode: { type: DataTypes.STRING(100), allowNull: true },
-    product_type: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: 'simple',
-    },
-    item_condition: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
-      defaultValue: 'new',
-      validate: {
-        isIn: [['new', 'refurbished']],
-      },
-    },
-    regular_price: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-    sale_price: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-    offer_percent: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
-    special_discount_enabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    special_discount_percent: {
-      type: DataTypes.DECIMAL(5, 2),
-      allowNull: false,
-      defaultValue: 0,
-    },
-    festival_offer_enabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    festival_offer_percent: {
-      type: DataTypes.DECIMAL(5, 2),
-      allowNull: false,
-      defaultValue: 0,
-    },
-    stock_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-    min_order_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
-    max_order_quantity: { type: DataTypes.INTEGER, allowNull: true },
-    target_audience: { type: DataTypes.TEXT, allowNull: true },
-    hsn_code: { type: DataTypes.STRING(20), allowNull: true },
-    gst_rate: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
-    weight: { type: DataTypes.DECIMAL(12, 3), allowNull: true },
-    weight_unit: { type: DataTypes.STRING(5), allowNull: false, defaultValue: 'g' },
-    unit_count: { type: DataTypes.INTEGER, allowNull: true },
-    package_length: { type: DataTypes.DECIMAL(12, 3), allowNull: true },
-    package_breadth: { type: DataTypes.DECIMAL(12, 3), allowNull: true },
-    package_height: { type: DataTypes.DECIMAL(12, 3), allowNull: true },
-    dimension_unit: { type: DataTypes.STRING(5), allowNull: false, defaultValue: 'cm' },
-    product_length: { type: DataTypes.DECIMAL(15, 3), allowNull: true },
-    product_breadth: { type: DataTypes.DECIMAL(15, 3), allowNull: true },
-    product_height: { type: DataTypes.DECIMAL(15, 3), allowNull: true },
-    product_dimension_unit: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-      defaultValue: 'cm',
-    },
-    material: { type: DataTypes.TEXT, allowNull: true },
-    colour: { type: DataTypes.TEXT, allowNull: true },
-    package_type: { type: DataTypes.TEXT, allowNull: true },
-    shelf_life: { type: DataTypes.TEXT, allowNull: true },
-    reusable: { type: DataTypes.BOOLEAN, allowNull: true },
-    water_resistant: { type: DataTypes.BOOLEAN, allowNull: true },
-    has_accessories: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    accessories: { type: DataTypes.TEXT, allowNull: true },
-    gift_options_available: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    gift_options_charge: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-    gift_wrap_available: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false,
-    },
-    gift_wrap_charge: { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-    hazardous_clause: { type: DataTypes.TEXT, allowNull: true },
-    manufactured_in: { type: DataTypes.TEXT, allowNull: true },
-    company_name: { type: DataTypes.TEXT, allowNull: true },
-    company_address: { type: DataTypes.TEXT, allowNull: true },
-    packer_name: { type: DataTypes.TEXT, allowNull: true },
-    packer_address: { type: DataTypes.TEXT, allowNull: true },
-    manufacturer_sku: { type: DataTypes.TEXT, allowNull: true },
-    brand_type: { type: DataTypes.TEXT, allowNull: true },
-    is_customisable: { type: DataTypes.BOOLEAN, allowNull: true },
-    model_number: { type: DataTypes.TEXT, allowNull: true },
-    manufacturer_contact_name: { type: DataTypes.TEXT, allowNull: true },
-    manufacturer_phone: { type: DataTypes.TEXT, allowNull: true },
-    manufacturer_email: { type: DataTypes.TEXT, allowNull: true },
-    license_number: { type: DataTypes.TEXT, allowNull: true },
-    repacker_name: { type: DataTypes.TEXT, allowNull: true },
-    repacker_address: { type: DataTypes.TEXT, allowNull: true },
-    age_min: { type: DataTypes.INTEGER, allowNull: true },
-    age_max: { type: DataTypes.INTEGER, allowNull: true },
-    age_unit: { type: DataTypes.TEXT, allowNull: true },
-    audience_age_group: { type: DataTypes.TEXT, allowNull: true },
-    product_uses: { type: DataTypes.TEXT, allowNull: true },
-    special_instructions: { type: DataTypes.TEXT, allowNull: true },
-    material_composition: { type: DataTypes.TEXT, allowNull: true },
-    material_type: { type: DataTypes.TEXT, allowNull: true },
-    resistance_level: { type: DataTypes.TEXT, allowNull: true },
-    heat_resistant: { type: DataTypes.BOOLEAN, allowNull: true },
-    gas_resistant: { type: DataTypes.BOOLEAN, allowNull: true },
-    physical_state: { type: DataTypes.TEXT, allowNull: true },
-    pattern: { type: DataTypes.TEXT, allowNull: true },
-    hazard_classification: { type: DataTypes.TEXT, allowNull: true },
-    net_weight: { type: DataTypes.DECIMAL(15, 3), allowNull: true },
-    net_weight_unit: { type: DataTypes.TEXT, allowNull: true },
-    manufacturing_date: { type: DataTypes.DATEONLY, allowNull: true },
-    fulfillment_channel: { type: DataTypes.TEXT, allowNull: true },
-    seller_handling_days: { type: DataTypes.INTEGER, allowNull: true },
-    business_offer_percent: { type: DataTypes.DECIMAL(15, 3), allowNull: true },
-    sale_start_date: { type: DataTypes.DATEONLY, allowNull: true },
-    sale_end_date: { type: DataTypes.DATEONLY, allowNull: true },
-    shipping_template: { type: DataTypes.TEXT, allowNull: true },
-    seller_pincodes: { type: DataTypes.JSONB, allowNull: true },
-    battery_required: { type: DataTypes.BOOLEAN, allowNull: true },
-    battery_consumption: { type: DataTypes.TEXT, allowNull: true },
-    cosmetic_features: { type: DataTypes.TEXT, allowNull: true },
-    keywords: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
-    effective_price: {
-      type: DataTypes.VIRTUAL,
-      get() {
-        return effectivePrice(this.dataValues);
-      },
-    },
-    product_id: {
+    id: {
       type: DataTypes.BIGINT,
-      field: 'id',
       primaryKey: true,
       autoIncrement: true,
       allowNull: false,
     },
+
+    product_code: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      unique: true,
+    },
+
     product_name: {
       type: DataTypes.STRING(255),
-      field: 'name',
       allowNull: false,
-      validate: { notEmpty: true },
     },
+
+    slug: {
+      type: DataTypes.STRING(300),
+      allowNull: false,
+      unique: true,
+    },
+
+    sku: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      unique: true,
+    },
+
+    barcode: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+    },
+
     brand_id: {
       type: DataTypes.BIGINT,
       allowNull: true,
     },
-    slug: {
-      type: DataTypes.STRING(280),
-      allowNull: false,
-    },
-    description: {
-      type: DataTypes.TEXT,
+
+    category_id: {
+      type: DataTypes.BIGINT,
       allowNull: true,
     },
-    short_description: {
-      type: DataTypes.TEXT,
+
+    subcategory_id: {
+      type: DataTypes.BIGINT,
       allowNull: true,
     },
+
+    vendor_id: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+    },
+
+    product_type: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      defaultValue: 'simple',
+    },
+
     product_status: {
-      type: DataTypes.STRING(20),
-      allowNull: false,
+      type: DataTypes.STRING(30),
+      allowNull: true,
       defaultValue: 'draft',
-      validate: {
-        isIn: [['draft', 'active', 'inactive', 'archived']],
-      },
+    },
+
+    selling_price: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    mrp: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    cost_price: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    tax_rate: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    hsn_code: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+    },
+
+    stock_quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    min_stock_quantity: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
+
+    is_featured: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+    },
+
+    is_active: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: true,
+    },
+
+    is_deleted: {
+      type: DataTypes.BOOLEAN,
+      allowNull: true,
+      defaultValue: false,
+    },
+
+    // PostgreSQL uses BIGINT here, not UUID.
+    // Auth UUIDs must not be inserted into these fields.
+    created_by: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
+    },
+
+    updated_by: {
+      type: DataTypes.BIGINT,
+      allowNull: true,
     },
   },
   {
     tableName: 'products',
     timestamps: true,
-    paranoid: true,
     underscored: true,
     createdAt: 'created_at',
     updatedAt: 'updated_at',
-    deletedAt: 'deleted_at',
+
+    // The database uses is_deleted, not deleted_at.
+    paranoid: false,
   },
 );

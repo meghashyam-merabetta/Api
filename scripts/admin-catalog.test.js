@@ -57,7 +57,10 @@ test('pricing validates merged PATCH data, aliases, zero offers and quantity bou
     has_accessories: true,
   });
   assert.deepEqual(
-    normalizePricing({ has_accessories: false }, { has_accessories: true, accessories: 'Old' }),
+    normalizePricing(
+      { has_accessories: false },
+      { has_accessories: true, accessories: 'Old' },
+    ),
     { has_accessories: false, accessories: null },
   );
   assert.throws(
@@ -97,96 +100,37 @@ test('pricing validates merged PATCH data, aliases, zero offers and quantity bou
   );
 });
 
-test('product contract accepts specifications and rejects invalid price, tax and sort values', () => {
+test('native product contract uses details and rejects invalid money, tax and sorting', () => {
   const body = {
+    product_code: 'DIAPER-M',
     product_name: 'Diaper M',
     slug: 'diaper-m',
-    barcode: '8901234567890',
-    item_condition: 'new',
-    reusable: false,
-    has_accessories: true,
-    accessories: 'Disposal bag included',
-    product_length: 60,
-    product_breadth: 90,
-    product_height: 0.5,
-    product_dimension_unit: 'cm',
-    gift_options_available: true,
-    gift_options_charge: 50,
-    gift_wrap_available: true,
-    gift_wrap_charge: 25,
-    manufacturer_sku: 'MSKU-100',
-    brand_type: 'company',
-    is_customisable: false,
-    model_number: 'MDL-2026',
-    manufacturer_contact_name: 'John Doe',
-    manufacturer_phone: '+919876543210',
-    manufacturer_email: 'factory@example.com',
-    license_number: 'LIC-998877',
-    repacker_name: 'Care Packagers',
-    repacker_address: 'Pune MIDC',
-    age_min: 18,
-    age_max: 80,
-    age_unit: 'years',
-    audience_age_group: 'adults',
-    product_uses: 'Hospital bed protection',
-    special_instructions: 'Store in a cool dry place',
-    material_composition: 'Non-woven top sheet + fluff pulp',
-    material_type: 'Waterproof backing',
-    resistance_level: 'High',
-    heat_resistant: false,
-    gas_resistant: false,
-    physical_state: 'solid',
-    pattern: 'Diamond embossed',
-    hazard_classification: 'Non-hazardous',
-    net_weight: 450,
-    net_weight_unit: 'g',
-    manufacturing_date: '2026-10-01',
-    fulfillment_channel: 'merabetta',
-    seller_handling_days: 2,
-    business_offer_percent: 5,
-    sale_start_date: '2026-10-15',
-    sale_end_date: '2026-11-15',
-    shipping_template: 'STD-MED',
-    seller_pincodes: ['411001', '400001'],
-    battery_required: false,
-    battery_consumption: 'N/A',
-    cosmetic_features: 'Soft breathable top layer',
     mrp: 999,
-    offer_price: 799,
-    gst_rate: 5,
-    keywords: ['adult', 'diaper'],
-    unit_count: 10,
-    water_resistant: true,
-    package_length: 20,
-    company_address: 'Example',
+    selling_price: 799,
+    tax_rate: 5,
+    details: {
+      size: 'M',
+      product_length: 60,
+      product_width: 90,
+      product_height: 0.5,
+      dimension_unit: 'cm',
+      specifications: { reusable: false },
+    },
   };
   const parsed = createProductSchema.parse(body);
-  assert.equal(parsed.unit_count, 10);
-  assert.equal(parsed.barcode, '8901234567890');
-  assert.equal(parsed.item_condition, 'new');
-  assert.equal(parsed.reusable, false);
-  assert.equal(parsed.product_length, 60);
-  assert.equal(parsed.product_breadth, 90);
-  assert.equal(parsed.gift_options_charge, 50);
-  assert.equal(parsed.gift_wrap_charge, 25);
-  assert.equal(parsed.manufacturer_sku, 'MSKU-100');
-  assert.deepEqual(parsed.seller_pincodes, ['411001', '400001']);
+  assert.equal(parsed.details.product_width, 90);
+  assert.equal(parsed.details.specifications.reusable, false);
   for (const invalid of [
-    { gst_rate: 101 },
-    { unit_count: 0 },
-    { regular_price: -1 },
-    { sale_price: 1.001 },
-    { water_resistant: 'false' },
-    { item_condition: 'used' },
-    { product_length: -5 },
-    { gift_options_charge: -10 },
+    { tax_rate: 101 },
+    { selling_price: -1 },
+    { selling_price: 1.001 },
+    { base_price: 1 },
+    { product_type: 'other' },
+    { mrp: 1 },
   ])
     assert.equal(createProductSchema.safeParse({ ...body, ...invalid }).success, false);
   assert.equal(updateProductSchema.safeParse({}).success, false);
-  assert.equal(
-    updateProductSchema.safeParse({ category_ids: [1], primary_category_id: 2 }).success,
-    false,
-  );
+  assert.equal(updateProductSchema.safeParse({ category_ids: [1] }).success, false);
   assert.equal(
     listQuerySchema.safeParse({ sort_by: 'name; DROP TABLE products' }).success,
     false,
@@ -229,4 +173,57 @@ test('image multipart writes require a trusted origin and permit PUT replacement
       (error) => error.status === 415,
     );
   }
+});
+
+test('catalog inputs stay within PostgreSQL storage bounds and never silently replace an explicit sale price', () => {
+  for (const body of [
+    { stock_quantity: 2147483648 },
+    { min_order_quantity: 2147483648 },
+    { unit_count: 2147483648 },
+    { age_max: 2147483648 },
+    { seller_handling_days: 2147483648 },
+    { weight: 1000000000 },
+    { package_height: 1.0001 },
+    { product_breadth: 1000000000000 },
+    { net_weight: 1.0001 },
+  ]) {
+    assert.equal(
+      updateProductSchema.safeParse(body).success,
+      false,
+      JSON.stringify(body),
+    );
+  }
+  assert.equal(
+    updateProductSchema.safeParse({
+      stock_quantity: 2147483647,
+      details: { product_weight: 9999999.999 },
+    }).success,
+    true,
+  );
+  assert.throws(
+    () => normalizePricing({ regular_price: 100, offer_percent: 20, sale_price: 50 }),
+    /conflicts with offer_percent/,
+  );
+  assert.throws(
+    () =>
+      normalizePricing({ sale_price: 50 }, { regular_price: '100', offer_percent: '20' }),
+    /clear offer_percent/,
+  );
+  assert.equal(
+    normalizePricing(
+      { offer_percent: null, sale_price: 50 },
+      { regular_price: '100', offer_percent: '20' },
+    ).sale_price,
+    50,
+  );
+  assert.equal(
+    normalizePricing({ regular_price: 100, offer_percent: 20, sale_price: 80 })
+      .sale_price,
+    80,
+  );
+  assert.equal(
+    normalizePricing({ regular_price: 100, offer_percent: 20, sale_price: null })
+      .sale_price,
+    80,
+  );
 });

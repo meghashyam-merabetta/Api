@@ -1,3 +1,4 @@
+import { VariantImage } from '../models/variant-image.model.js';
 import { randomUUID } from 'node:crypto';
 import { Op } from 'sequelize';
 import {
@@ -11,11 +12,19 @@ import { models } from '../models/index.js';
 import { logger } from '../config/logger.js';
 import { HttpError } from './errors.js';
 import { s3 } from './image_upload.js';
+import { env } from '../config/env.js';
+import { localImageDirectory } from './image-client.js';
 
-export const IMAGE_BUCKET = 'prod-merabetta';
+export const IMAGE_BUCKET = env.IMAGE_S3_BUCKET;
+export const imageStorageScope =
+  env.IMAGE_STORAGE_MODE === 'local'
+    ? `local:${localImageDirectory}`
+    : `s3:${IMAGE_BUCKET}`;
 const extension = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 export const imageUrl = (key) =>
-  `https://${IMAGE_BUCKET}.s3.ap-south-1.amazonaws.com/${key}`;
+  env.IMAGE_STORAGE_MODE === 'local'
+    ? `${env.IMAGE_LOCAL_BASE_URL.replace(/\/$/, '')}/${key}`
+    : `https://${IMAGE_BUCKET}.s3.${env.IMAGE_S3_REGION}.amazonaws.com/${key}`;
 export const managedImageKey = (key) =>
   /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
     key,
@@ -29,8 +38,10 @@ export function managedImageKeyFromUrl(value) {
   if (!value) return null;
   try {
     const url = new URL(value);
-    if (url.origin !== new URL(imageUrl('')).origin) return null;
-    const key = decodeURIComponent(url.pathname.slice(1));
+    const base = new URL(imageUrl(''));
+    if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname))
+      return null;
+    const key = decodeURIComponent(url.pathname.slice(base.pathname.length));
     return managedImageKey(key) ? key : null;
   } catch {
     return null;
@@ -44,6 +55,8 @@ export async function queueImageUrlCleanup(value, transaction) {
 
 export async function isImageReferenced(key, transaction) {
   if (await models.productImage.count({ where: { s3_key: key }, transaction }))
+    return true;
+  if (await VariantImage.count({ where: { s3_key: key }, transaction }))
     return true;
   const url = imageUrl(key);
   for (const [model, field] of [
@@ -82,7 +95,11 @@ export async function objectExists(key) {
 }
 
 export async function queueImageCleanup(key, transaction) {
-  await ProductImageCleanup.findOrCreate({ where: { s3_key: key }, transaction });
+  await ProductImageCleanup.findOrCreate({
+    where: { s3_key: key },
+    defaults: { storage_scope: imageStorageScope },
+    transaction,
+  });
 }
 
 // A committed journal exists before S3 is touched. A crash/rollback leaves retryable cleanup.
@@ -97,6 +114,7 @@ export async function reserveImage(resource, resourceId, file) {
   const key = `upload/${resource}/${resourceId}/${randomUUID()}.${extension[file.mimetype]}`;
   await ProductImageCleanup.create({
     s3_key: key,
+    storage_scope: imageStorageScope,
     not_before: new Date(Date.now() + 3600000),
   });
   return key;
@@ -107,7 +125,8 @@ export async function stageImage(key, file, transaction) {
     transaction,
     lock: transaction.LOCK.UPDATE,
   });
-  if (!journal) throw new HttpError(409, 'Image staging expired; retry the request');
+  if (!journal || journal.storage_scope !== imageStorageScope)
+    throw new HttpError(409, 'Image staging expired; retry the request');
   await s3.send(
     new PutObjectCommand({
       Bucket: IMAGE_BUCKET,
@@ -121,12 +140,33 @@ export async function stageImage(key, file, transaction) {
   return { key, journal };
 }
 
-export async function processImageCleanup({ limit = 20 } = {}) {
+// Attempt only this request's committed cleanup jobs. A storage outage retains
+// the durable retry instead of turning an already committed deletion into a 500.
+export async function finishImageCleanup(keys) {
+  const unique = [...new Set(keys.filter(Boolean))];
+  if (!unique.length) return;
+  try {
+    await processImageCleanup({
+      keys: unique,
+      limit: unique.length,
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    logger.warn({ err: error }, 'Committed image cleanup deferred to worker');
+  }
+}
+
+export async function processImageCleanup({ limit = 20, keys, signal } = {}) {
   let processed = 0;
   for (let index = 0; index < limit; index++) {
+    if (signal?.aborted) break;
     const found = await sequelize.transaction(async (transaction) => {
       const job = await ProductImageCleanup.findOne({
-        where: { not_before: { [Op.lte]: new Date() } },
+        where: {
+          storage_scope: imageStorageScope,
+          not_before: { [Op.lte]: new Date() },
+          ...(keys ? { s3_key: { [Op.in]: keys } } : {}),
+        },
         order: [['not_before', 'ASC']],
         transaction,
         lock: transaction.LOCK.UPDATE,
@@ -138,6 +178,7 @@ export async function processImageCleanup({ limit = 20 } = {}) {
         if (!(await isImageReferenced(job.s3_key, transaction)))
           await s3.send(
             new DeleteObjectCommand({ Bucket: IMAGE_BUCKET, Key: job.s3_key }),
+            ...(signal ? [{ abortSignal: signal }] : []),
           );
         await job.destroy({ transaction });
         processed++;

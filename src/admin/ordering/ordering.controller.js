@@ -31,6 +31,10 @@ export function buildFilter(kind, query) {
   if (kind === 'labs' && query.paymentMethod)
     throw new HttpError(422, 'paymentMethod is only supported for product orders');
   const clauses = [], replacements = {};
+  if (query.search) {
+    clauses.push('("bookingNumber" ILIKE :search OR "customerName" ILIKE :search OR phone ILIKE :search)');
+    replacements.search = `%${query.search}%`;
+  }
   const number = kind === 'labs' ? query.bookingId : query.orderId;
   if (number) {
     clauses.push('"bookingNumber"=:number');

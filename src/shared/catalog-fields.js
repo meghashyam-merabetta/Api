@@ -19,13 +19,16 @@ const optionalCode = (max = 100) =>
     preprocessEmptyStringToNull,
     z.string().min(1).max(max).nullable().optional(),
   );
-const isoDate = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .nullable()
-  .optional();
+const integer = z.number().int().min(0).max(2147483647);
+const measurement = (max) =>
+  z.number().finite().positive().max(max).multipleOf(0.001).nullable().optional();
+const isoDate = z.iso.date().nullable().optional();
 export const catalogFields = {
+  attributes: z
+    .record(z.string().trim().min(1).max(100), z.string().trim().min(1).max(200))
+    .refine((value) => Object.keys(value).length <= 30)
+    .optional(),
+  product_group_code: z.string().trim().min(1).max(100).nullable().optional(),
   product_code: optionalCode(100),
   sku: optionalCode(100),
   barcode: optionalCode(100),
@@ -40,22 +43,22 @@ export const catalogFields = {
   special_discount_percent: percent.optional(),
   festival_offer_enabled: z.boolean().optional(),
   festival_offer_percent: percent.optional(),
-  stock_quantity: z.number().int().min(0).optional(),
-  min_order_quantity: z.number().int().min(1).optional(),
-  max_order_quantity: z.number().int().min(1).nullable().optional(),
+  stock_quantity: integer.optional(),
+  min_order_quantity: integer.min(1).optional(),
+  max_order_quantity: integer.min(1).nullable().optional(),
   target_audience: text,
   hsn_code: optionalCode(20),
   gst_rate: percent.nullable().optional(),
-  weight: z.number().finite().positive().nullable().optional(),
+  weight: measurement(999999999.999),
   weight_unit: z.enum(['g', 'kg']).optional(),
-  unit_count: z.number().int().positive().nullable().optional(),
-  package_length: z.number().finite().positive().nullable().optional(),
-  package_breadth: z.number().finite().positive().nullable().optional(),
-  package_height: z.number().finite().positive().nullable().optional(),
+  unit_count: integer.min(1).nullable().optional(),
+  package_length: measurement(999999999.999),
+  package_breadth: measurement(999999999.999),
+  package_height: measurement(999999999.999),
   dimension_unit: z.enum(['cm', 'mm', 'in']).optional(),
-  product_length: z.number().finite().positive().nullable().optional(),
-  product_breadth: z.number().finite().positive().nullable().optional(),
-  product_height: z.number().finite().positive().nullable().optional(),
+  product_length: measurement(999999999999.999),
+  product_breadth: measurement(999999999999.999),
+  product_height: measurement(999999999999.999),
   product_dimension_unit: z.enum(['cm', 'mm', 'in']).nullable().optional(),
   material: text,
   colour: text,
@@ -88,8 +91,8 @@ export const catalogFields = {
   license_number: text,
   repacker_name: text,
   repacker_address: text,
-  age_min: z.number().int().min(0).nullable().optional(),
-  age_max: z.number().int().min(0).nullable().optional(),
+  age_min: integer.nullable().optional(),
+  age_max: integer.nullable().optional(),
   age_unit: z.enum(['years', 'months']).nullable().optional(),
   audience_age_group: z
     .enum(['infants', 'children', 'young people', 'adults', 'seniors', 'all ages'])
@@ -105,11 +108,18 @@ export const catalogFields = {
   physical_state: z.enum(['solid', 'liquid', 'gas']).nullable().optional(),
   pattern: text,
   hazard_classification: text,
-  net_weight: z.number().finite().min(0).nullable().optional(),
+  net_weight: z
+    .number()
+    .finite()
+    .min(0)
+    .max(999999999999.999)
+    .multipleOf(0.001)
+    .nullable()
+    .optional(),
   net_weight_unit: z.enum(['g', 'kg']).nullable().optional(),
   manufacturing_date: isoDate,
   fulfillment_channel: z.enum(['merabetta', 'self']).nullable().optional(),
-  seller_handling_days: z.number().int().min(0).nullable().optional(),
+  seller_handling_days: integer.nullable().optional(),
   business_offer_percent: percent.nullable().optional(),
   sale_start_date: isoDate,
   sale_end_date: isoDate,
@@ -121,6 +131,7 @@ export const catalogFields = {
         .trim()
         .regex(/^[1-9]\d{5}$/),
     )
+    .max(1000)
     .nullable()
     .optional(),
   battery_required: z.boolean().nullable().optional(),
@@ -160,7 +171,17 @@ export function normalizePricing(input, previous = {}) {
   if (merged.offer_percent !== null && merged.offer_percent !== undefined) {
     if (regular === null || regular === undefined)
       throw new HttpError(400, 'regular_price is required for offer_percent');
-    data.sale_price = Math.round(regular * (100 - Number(merged.offer_percent))) / 100;
+    const calculated = Math.round(regular * (100 - Number(merged.offer_percent))) / 100;
+    if (
+      Object.hasOwn(data, 'sale_price') &&
+      data.sale_price !== null &&
+      Number(data.sale_price) !== calculated
+    )
+      throw new HttpError(
+        400,
+        'sale_price conflicts with offer_percent; clear offer_percent to set a manual sale_price',
+      );
+    data.sale_price = calculated;
   }
   const sale = Object.hasOwn(data, 'sale_price') ? data.sale_price : merged.sale_price;
   if (
