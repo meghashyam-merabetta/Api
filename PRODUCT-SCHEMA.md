@@ -78,3 +78,13 @@ RUN_PRODUCT_SCHEMA_DB_TESTS=true node --import ./test-support/env.js --test scri
 ```
 
 This opt-in suite resets product, catalog and checkout fixtures in that disposable database.
+
+## Variant image galleries
+
+`sql/038-variant-image-galleries.sql` adds `product_variants.use_product_images`
+(default true) and `product_variant_images` with the exact variant ID, immutable
+storage key, URL, order and primary flag. Product galleries and their endpoints
+remain intact. See [VARIANT-IMAGE-GALLERIES.md](VARIANT-IMAGE-GALLERIES.md) for the
+API contract, sharing semantics and migration command. This migration has been
+verified in a disposable database, then applied to user-confirmed UAT on
+31 October 2026. See the linked contract for deployment evidence.

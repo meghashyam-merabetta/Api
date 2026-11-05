@@ -104,6 +104,9 @@ test(
           '022-product-images.sql',
           '027-admin-catalog-reliability.sql',
           '035-product-specification-fields.sql',
+          '035-admin-integration-gaps.sql',
+          '036-independent-products-audit.sql',
+        '038-variant-image-galleries.sql',
         ])
           await sequelize.query(
             await readFile(new URL(`../sql/${file}`, import.meta.url), 'utf8'),

@@ -20,13 +20,15 @@ const attribute = z
   })
   .strict();
 const attributeParams = z
-  .object({ attributeId: z.coerce.number().int().positive() })
+  .object({
+    attributeId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  })
   .strict();
 const productParams = z
-  .object({ productId: z.coerce.number().int().positive() })
+  .object({ productId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER) })
   .strict();
 const variantParams = productParams.extend({
-  variantId: z.coerce.number().int().positive(),
+  variantId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 });
 const pagination = z
   .object({
@@ -66,3 +68,15 @@ export {
   pagination as listVariantQuerySchema,
   variant as createVariantSchema,
 };
+
+export const variantImageParamsSchema = variantParams.extend({
+  imageId: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+});
+export const variantImageModeSchema = z
+  .object({ use_product_images: z.boolean() })
+  .strict();
+export const shareVariantImagesSchema = z
+  .object({
+    source_variant_id: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict();

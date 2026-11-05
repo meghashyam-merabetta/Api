@@ -5,6 +5,11 @@ export const ProductImageCleanup = sequelize.define(
   'ProductImageCleanup',
   {
     s3_key: { type: DataTypes.TEXT, primaryKey: true },
+    storage_scope: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      defaultValue: 's3:prod-merabetta',
+    },
     not_before: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
     attempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     last_error: DataTypes.TEXT,

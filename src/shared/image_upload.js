@@ -1,12 +1,12 @@
 import { MAX_PRODUCT_IMAGES } from './product-images.js';
 import multer from 'multer';
-import { S3Client } from '@aws-sdk/client-s3';
+import { imageClient } from './image-client.js';
 import { HttpError } from './errors.js';
 import { validateImageContent } from './image-signature.js';
 
 export const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_IMAGE_BATCH_BYTES = 10 * 1024 * 1024;
-export const s3 = new S3Client({ region: 'ap-south-1' });
+export const s3 = imageClient;
 
 // All image endpoints use the same multipart field and validated in-memory files.
 // The caller selects its resource-specific file count and aggregate size limit.

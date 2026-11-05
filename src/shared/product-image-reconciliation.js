@@ -9,6 +9,7 @@ import {
   isImageReferenced,
   queueImageCleanup,
   processImageCleanup,
+  managedImageKeyFromUrl,
 } from './image-storage.js';
 import { publishProductCatalog } from './catalog-publisher.js';
 
@@ -20,6 +21,7 @@ export async function reconcileProductImages({
   const report = { missing: [], orphans: [], removedRows: 0, queuedObjects: 0 };
   const images = await models.productImage.findAll();
   for (const snapshot of images) {
+    if (managedImageKeyFromUrl(snapshot.image_url) !== snapshot.s3_key) continue;
     if (await objectExists(snapshot.s3_key)) continue;
     report.missing.push({
       id: snapshot.id,
@@ -39,7 +41,7 @@ export async function reconcileProductImages({
       await row.destroy({ transaction });
       if (row.is_primary) {
         const next = await models.productImage.findOne({
-          where: { product_id: parent.product_id },
+          where: { product_id: parent.id },
           order: [
             ['sort_order', 'ASC'],
             ['id', 'ASC'],
@@ -48,7 +50,7 @@ export async function reconcileProductImages({
         });
         if (next) await next.update({ is_primary: true }, { transaction });
       }
-      await publishProductCatalog(parent.product_id, transaction);
+      await publishProductCatalog(parent.id, transaction);
       report.removedRows++;
     });
   }

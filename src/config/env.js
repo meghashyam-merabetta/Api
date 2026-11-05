@@ -8,8 +8,17 @@ const secret = z
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    INDEPENDENT_PRODUCTS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     PRODUCT_IMAGE_BASE_URL: z.string().trim().default(''),
+    IMAGE_STORAGE_MODE: z.enum(['s3', 'local']).default('s3'),
+    IMAGE_S3_BUCKET: z.string().trim().min(3).default('prod-merabetta'),
+    IMAGE_S3_REGION: z.string().trim().min(1).default('ap-south-1'),
+    IMAGE_LOCAL_DIRECTORY: z.string().trim().min(1).default('.local-images'),
+    IMAGE_LOCAL_BASE_URL: z.url().default('http://localhost:3000/uploads'),
     LOCATIONIQ_API_KEY: z.string().trim().default(''),
     REDCLIFFE_BASE_URL: z.string().trim().default(''),
     REDCLIFFE_API_KEY: z.string().trim().default(''),
@@ -89,6 +98,12 @@ const schema = z
       .default('info'),
   })
   .superRefine((v, ctx) => {
+    if (v.NODE_ENV === 'production' && v.IMAGE_STORAGE_MODE === 'local')
+      ctx.addIssue({
+        code: 'custom',
+        path: ['IMAGE_STORAGE_MODE'],
+        message: 'Local image storage is for development and tests only',
+      });
     if (Boolean(v.APP_REVIEW_EMAIL) !== Boolean(v.APP_REVIEW_OTP))
       ctx.addIssue({
         code: 'custom',

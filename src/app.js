@@ -1,3 +1,4 @@
+import { assertTeamSchemaReady } from './catalog/readiness.js';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -15,8 +16,10 @@ import { isTrustedOrigin } from './config/origins.js';
 import { apiRoutes } from './routes/index.js';
 import { HttpError } from './shared/errors.js';
 import { paymentWebhook, paymentReturn } from './app/hdfc/callbacks.js';
+import { localImageDirectory } from './shared/image-client.js';
 
-const safeLogUrl = url => url.split('?')[0].replace(/(\/payments\/hdfc\/return)\/[^/]+/, '$1/[redacted]');
+const safeLogUrl = (url) =>
+  url.split('?')[0].replace(/(\/payments\/hdfc\/return)\/[^/]+/, '$1/[redacted]');
 
 export const app = express();
 app.disable('x-powered-by');
@@ -63,6 +66,19 @@ app.use(
   }),
 );
 
+if (env.IMAGE_STORAGE_MODE === 'local') {
+  app.use(
+    new URL(env.IMAGE_LOCAL_BASE_URL).pathname,
+    express.static(localImageDirectory, {
+      dotfiles: 'deny',
+      index: false,
+      immutable: true,
+      maxAge: '1y',
+      setHeaders: (res) => res.set('Cross-Origin-Resource-Policy', 'cross-origin'),
+    }),
+  );
+}
+
 app.get('/health/live', (req, res) => res.json({ status: 'ok' }));
 app.get('/api/app/version-policy', (_req, res) => {
   const policy = (minimumBuild, storeUrl, host) => {
@@ -83,6 +99,7 @@ app.get('/api/app/version-policy', (_req, res) => {
 app.get('/health/ready', async (req, res) => {
   try {
     await sequelize.authenticate();
+    await assertTeamSchemaReady();
     res.json({ status: 'ready' });
   } catch {
     res.status(503).json({ status: 'unavailable' });
@@ -109,6 +126,8 @@ app.post(
   paymentReturn,
 );
 app.use(csrfGuard);
+// Full product specifications can legitimately exceed the default JSON limit.
+app.use('/api/admin/products', express.json({ limit: '128kb' }));
 app.use(express.json({ limit: '16kb' }));
 app.use(cookieParser());
 app.use('/api', apiRoutes);
@@ -123,6 +142,21 @@ app.use((err, req, res, next) => {
         message: i.message,
       })),
     });
+  if (
+    err instanceof UniqueConstraintError &&
+    req.path.startsWith('/api/admin/products')
+  ) {
+    const labels = { slug: 'Slug', sku: 'SKU', product_code: 'Product code' };
+    const fields = Object.keys(err.fields ?? {}).filter((field) =>
+      Object.hasOwn(labels, field),
+    );
+    return res.status(409).json({
+      error: fields.length
+        ? `${fields.map((field) => labels[field]).join(', ')} already in use`
+        : 'A record with these unique fields already exists',
+      details: fields.map((field) => ({ path: field, message: 'Already in use' })),
+    });
+  }
   if (err instanceof UniqueConstraintError)
     return res.status(409).json({
       error:

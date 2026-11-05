@@ -1,11 +1,13 @@
+import { ProductVariant, VariantAttribute } from '../../models/catalog.model.js';
+import { variantWithGallery } from '../../shared/variant-galleries.js';
+import { env } from '../../config/env.js';
+import { catalogTransaction } from '../../shared/catalog-audit.js';
 import { catalogMutation, sendMutation } from '../../shared/catalog-idempotency.js';
 import { publishProductCatalog } from '../../shared/catalog-publisher.js';
 import { normalizePricing } from '../../shared/catalog-fields.js';
 import { Op } from 'sequelize';
 import {
   Product,
-  ProductVariant,
-  VariantAttribute,
   ProductCatalog,
 } from '../../models/index.js';
 import { sequelize } from '../../config/database.js';
@@ -20,7 +22,7 @@ async function findAttribute(id, transaction) {
 }
 async function attributeInUse(name, transaction) {
   const [rows] = await sequelize.query(
-    'SELECT 1 FROM product_variants WHERE attributes ? :name LIMIT 1',
+    'SELECT 1 FROM product_details WHERE specifications ? :name OR additional_attributes ? :name LIMIT 1',
     { replacements: { name }, transaction },
   );
   return rows.length > 0;
@@ -34,13 +36,18 @@ async function product(id, transaction) {
   return row;
 }
 export async function saveVariant(req, res) {
+  if (env.INDEPENDENT_PRODUCTS_ENABLED)
+    throw new HttpError(
+      409,
+      'Legacy variant writes are disabled; create or edit independent products',
+    );
   const { productId, variantId } = req.validatedParams;
   const result = await catalogMutation(
     req,
     req.validated,
     variantId ? 200 : 201,
     async (transaction) => {
-      await product(productId, transaction);
+      const ownerProduct = await product(productId, transaction);
       let existing = variantId
         ? await ProductVariant.findOne({
             where: { id: variantId, product_id: productId },
@@ -88,7 +95,7 @@ export async function saveVariant(req, res) {
             { transaction },
           );
       await publishProductCatalog(productId, transaction);
-      return row;
+      return variantWithGallery(row, ownerProduct, transaction);
     },
   );
   sendMutation(res, result);
@@ -123,7 +130,7 @@ export async function createVariantAttribute(req, res) {
   return res.status(201).json({ data: await VariantAttribute.create(req.validated) });
 }
 export async function updateVariantAttribute(req, res) {
-  const result = await sequelize.transaction(async (transaction) => {
+  const result = await catalogTransaction(req, async (transaction) => {
     const row = await findAttribute(req.validatedParams.attributeId, transaction);
     // Preserve the meaning of existing variant selections.
     const removesValues =
@@ -142,7 +149,7 @@ export async function updateVariantAttribute(req, res) {
   res.json({ data: result });
 }
 export async function deleteVariantAttribute(req, res) {
-  await sequelize.transaction(async (transaction) => {
+  await catalogTransaction(req, async (transaction) => {
     const row = await findAttribute(req.validatedParams.attributeId, transaction);
     if (await attributeInUse(row.name, transaction))
       throw new HttpError(409, 'Cannot delete an attribute in use');
@@ -159,10 +166,12 @@ export async function getProductVariant(req, res) {
     },
   });
   if (!row) throw new HttpError(404, 'Product variant not found');
-  res.json({ data: row });
+  res.json({
+    data: await variantWithGallery(row, await product(req.validatedParams.productId)),
+  });
 }
 export async function listProductVariants(req, res) {
-  await product(req.validatedParams.productId);
+  const ownerProduct = await product(req.validatedParams.productId);
   const { limit, offset } = req.validatedQuery;
   const { rows, count } = await ProductVariant.findAndCountAll({
     where: { product_id: req.validatedParams.productId },
@@ -174,7 +183,7 @@ export async function listProductVariants(req, res) {
     ],
   });
   res.json({
-    data: rows,
+    data: await Promise.all(rows.map((row) => variantWithGallery(row, ownerProduct))),
     pagination: {
       total: count,
       limit,
@@ -184,7 +193,9 @@ export async function listProductVariants(req, res) {
   });
 }
 export async function deleteProductVariant(req, res) {
-  await sequelize.transaction(async (transaction) => {
+  if (env.INDEPENDENT_PRODUCTS_ENABLED)
+    throw new HttpError(409, 'Legacy variants are retained as migration evidence');
+  await catalogTransaction(req, async (transaction) => {
     await product(req.validatedParams.productId, transaction);
     const removed = await ProductVariant.destroy({
       where: {

@@ -3,7 +3,7 @@ const sensitiveKey =
 
 export function sanitizeLogValue(value, depth = 0) {
   if (depth > 4) return '[truncated]';
-  if (value == null) return value;
+  if (value === null || value === undefined) return value;
   if (typeof value === 'object' && typeof value.toJSON === 'function') {
     try {
       value = value.toJSON();

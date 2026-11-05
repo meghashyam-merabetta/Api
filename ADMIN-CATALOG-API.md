@@ -1,5 +1,7 @@
 # Admin catalog corrections
 
+Variant galleries, inheritance/sharing, retry rules and the required additive migration are documented in [VARIANT-IMAGE-GALLERIES.md](VARIANT-IMAGE-GALLERIES.md).
+
 Shared product/category/brand file-upload endpoints and frontend examples are documented in [IMAGE-UPLOAD-API.md](IMAGE-UPLOAD-API.md).
 
 The full core-schema mapping, variant barcode/weight fields, customer catalog and checkout behavior are documented in [PRODUCT-SCHEMA.md](PRODUCT-SCHEMA.md).
@@ -89,3 +91,23 @@ node --import ./test-support/env.js --test scripts/admin-catalog-db.test.js
 ```
 
 The integration suite applies migrations twice, exercises CRUD and hierarchy validation over HTTP, verifies listing associations and individual variants, and checks image primary selection, replacement, and rollback with mocked storage.
+
+### Product creation validation and retries
+
+`POST /api/admin/products` accepts authenticated JSON requests with a trusted Origin. Product JSON bodies (including nested variant routes) are capped at **128 KiB**; the default limit for other JSON endpoints remains 16 KiB. Image endpoints continue using multipart `uploadimage` and their existing image limits.
+
+Successful product creation returns `201`, `{ "data": { ...product } }`, and `Location: /api/admin/products/:productId`. Optional `Idempotency-Key` permits identical retries (including concurrent requests) to return the same product with `Idempotency-Replayed: true`. Reusing a key with different data returns 409. The product, category associations, published catalog data, and successful retry record commit atomically.
+
+- Integer quantities/ages/handling days must fit PostgreSQL INTEGER (at most 2,147,483,647).
+- Weight/package dimensions accept at most three decimal places and must fit NUMERIC(12,3), up to 999,999,999.999.
+- Product dimensions/net weight accept at most three decimal places and must fit NUMERIC(15,3), up to 999,999,999,999.999.
+- Category ID lists are capped at 1,000 entries. Existing brand/category references are checked inside the transaction; category rows are protected against concurrent deletion while linking the product.
+- Conflicting manual `sale_price` and percentage-based pricing return 400 instead of silently changing the submitted price. To switch an existing percentage-priced product to a manual price, send `offer_percent: null` together with the new `sale_price`.
+- Duplicate slug/SKU/product-code errors return 409 and `details: [{ "path": "slug", "message": "Already in use" }]` (with the corresponding conflicting field). No database query or conflicting value is exposed.
+- Invalid numeric values/types return 422, malformed JSON returns 400, and oversized JSON returns 413. Failed creation does not leave a product, category links, catalog entry, or successful retry record behind.
+
+These changes do not require a database schema migration. Backend restart/deployment is needed to activate the code. Product metadata creation does not upload images or by itself create vendor offers/warehouse inventory.
+
+## Independent product inventory and audit cutover
+
+The staged independent-product architecture, immutable audit history, stock ledger, exact product-ID checkout, new inventory/history endpoints, production preflight conflicts and approval/rollback steps are documented in [INDEPENDENT-PRODUCTS.md](INDEPENDENT-PRODUCTS.md). Install the explicitly approved `036-independent-products-audit.sql` schema before deploying updated models/controllers. `INDEPENDENT_PRODUCTS_ENABLED` remains off until legacy stock and vendor conflicts are resolved and conversion/cutover is approved. No category merge or production conversion was performed.

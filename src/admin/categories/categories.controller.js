@@ -1,12 +1,21 @@
+import {
+  previewCategoryDeletion,
+  executeCategoryDeletion,
+} from '../../shared/category-deletion.js';
+import { catalogTransaction } from '../../shared/catalog-audit.js';
 import { createEntityImageControllers } from '../../shared/entity-image.controller.js';
 import { sequelize } from '../../config/database.js';
 import { queueImageUrlCleanup } from '../../shared/image-storage.js';
 import { Op } from 'sequelize';
+import { normalizeCategoryName } from '../../shared/category-identity.js';
+import {
+  lockCategoryWrites,
+  assertUniqueCategorySibling,
+} from '../../shared/category-write.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
 
 const Category = models.category;
-const ProductCategory = models.productCategory;
 export const {
   getImage: getCategoryImage,
   uploadImage: uploadCategoryImage,
@@ -37,7 +46,7 @@ async function findCategory(categoryId, transaction) {
   return category;
 }
 
-async function validateParent(parentId, currentId = null) {
+async function validateParent(parentId, currentId = null, transaction) {
   if (parentId === null || parentId === undefined) {
     return;
   }
@@ -50,7 +59,7 @@ async function validateParent(parentId, currentId = null) {
     throw new HttpError(400, 'A category cannot be its own parent');
   }
 
-  let ancestor = await Category.findByPk(parentId);
+  let ancestor = await Category.findByPk(parentId, { transaction });
 
   if (!ancestor) {
     throw new HttpError(400, 'Parent category not found');
@@ -78,7 +87,7 @@ async function validateParent(parentId, currentId = null) {
       break;
     }
 
-    ancestor = await Category.findByPk(ancestor.parent_category_id);
+    ancestor = await Category.findByPk(ancestor.parent_category_id, { transaction });
 
     if (!ancestor) {
       throw new HttpError(400, 'Parent category hierarchy is invalid');
@@ -143,30 +152,54 @@ export async function getCategory(req, res) {
 
 export async function createCategory(req, res) {
   const data = req.validated;
-
-  await validateParent(data.parent_category_id);
-
-  const category = await Category.create({
-    category_name: data.category_name,
-    slug: data.slug,
-    category_image: data.category_image ?? null,
-    parent_category_id: data.parent_category_id ?? null,
-    description: data.description ?? null,
-    sort_order: data.sort_order ?? 0,
-    is_active: data.is_active ?? true,
+  const category = await catalogTransaction(req, async (transaction) => {
+    await lockCategoryWrites(sequelize, transaction);
+    await validateParent(data.parent_category_id, null, transaction);
+    await assertUniqueCategorySibling(
+      Category,
+      data.category_name,
+      data.parent_category_id,
+      transaction,
+    );
+    return Category.create(
+      {
+        category_name: data.category_name,
+        slug: data.slug,
+        category_image: data.category_image ?? null,
+        parent_category_id: data.parent_category_id ?? null,
+        description: data.description ?? null,
+        sort_order: data.sort_order ?? 0,
+        is_active: data.is_active ?? true,
+      },
+      { transaction },
+    );
   });
-
   res.status(201).json({ data: category });
 }
 
 export async function updateCategory(req, res) {
   const categoryId = getCategoryId(req);
   const data = req.validated;
-  if (data.parent_category_id !== undefined) {
-    await validateParent(data.parent_category_id, categoryId);
-  }
-  const category = await sequelize.transaction(async (transaction) => {
+  const category = await catalogTransaction(req, async (transaction) => {
+    await lockCategoryWrites(sequelize, transaction);
     const existing = await findCategory(categoryId, transaction);
+    if (data.parent_category_id !== undefined)
+      await validateParent(data.parent_category_id, categoryId, transaction);
+    const name = data.category_name ?? existing.category_name;
+    const parentId = Object.hasOwn(data, 'parent_category_id')
+      ? data.parent_category_id
+      : existing.parent_category_id;
+    if (
+      normalizeCategoryName(name) !== normalizeCategoryName(existing.category_name) ||
+      String(parentId ?? '') !== String(existing.parent_category_id ?? '')
+    )
+      await assertUniqueCategorySibling(
+        Category,
+        name,
+        parentId,
+        transaction,
+        categoryId,
+      );
     if (
       Object.hasOwn(data, 'category_image') &&
       data.category_image !== existing.category_image
@@ -190,66 +223,18 @@ export async function updateCategory(req, res) {
   res.json({ data: category });
 }
 
+export async function deletionPreview(req, res) {
+  res.json({ data: await previewCategoryDeletion([getCategoryId(req)]) });
+}
+
 export async function deleteCategory(req, res) {
-  const categoryId = getCategoryId(req);
-
-  try {
-    await sequelize.transaction(async (transaction) => {
-      const category = await findCategory(categoryId, transaction);
-
-      const isSubcategory = category.parent_category_id != null;
-      const entityName = isSubcategory ? 'Subcategory' : 'Category';
-      const entityNameLower = isSubcategory ? 'subcategory' : 'category';
-
-      // Prevent deletion when products are assigned to this category.
-      const productCount = await ProductCategory.count({
-        where: { category_id: categoryId },
-        transaction,
-      });
-
-      if (productCount > 0) {
-        throw new HttpError(
-          409,
-          `Cannot delete this ${entityNameLower} because products are assigned to it. Reassign the products first.`
-        );
-      }
-
-      // A category with subcategories cannot be deleted.
-      // Subcategories themselves can be deleted if they have no products.
-      if (!isSubcategory) {
-        const childCount = await Category.count({
-          where: { parent_category_id: categoryId },
-          transaction,
-        });
-
-        if (childCount > 0) {
-          throw new HttpError(
-            409,
-            'Cannot delete this category because it contains subcategories. Delete or reassign the subcategories first.'
-          );
-        }
-      }
-
-      // Preserve your existing image cleanup process.
-      await queueImageUrlCleanup(category.category_image, transaction);
-
-      await category.destroy({ transaction });
-    });
-
-    // A 204 response must not contain a JSON body.
-    return res.status(204).end();
-  } catch (error) {
-    if (
-      error?.name === 'SequelizeForeignKeyConstraintError' ||
-      error?.original?.code === '23503'
-    ) {
-      throw new HttpError(
-        409,
-        'Cannot delete this category or subcategory because it is still being used. Remove or reassign its relationships first.'
-      );
-    }
-    throw error;
-  }
+  const summary = await executeCategoryDeletion(
+    req,
+    getCategoryId(req),
+    req.validatedQuery?.expected_fingerprint,
+  );
+  if (req.validatedQuery?.response === 'summary') return res.json({ data: summary });
+  return res.status(204).end();
 }
 export async function categoryTree(req, res) {
   const where = {};
