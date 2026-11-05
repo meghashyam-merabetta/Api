@@ -16,7 +16,7 @@ export async function paymentWebhook(req, res) {
   const actual = Buffer.from(req.get('authorization') || '');
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual))
     throw new HttpError(401, 'Invalid webhook credentials');
-  const id = req.body?.content?.order?.order_id;
+  const id = req.body?.content?.order?.order_id || req.body?.content?.txn?.order_id;
   if (typeof id !== 'string' || !/^MB(?:[0-9]{11}|[a-f0-9]{18})$/.test(id))
     return res.status(200).json({ received: true });
   let row;

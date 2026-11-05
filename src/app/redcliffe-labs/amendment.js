@@ -101,7 +101,6 @@ export async function amendBooking(req, res) {
     const added = items.filter((i) => !existing.includes(i.snapshot.packageCode));
     if (!added.length) throw new HttpError(422, 'Choose a new test to add.');
     body = {
-      center_discount: order.discount || 0,
       packages: [...new Set([...existing, ...added.map((i) => i.snapshot.packageCode)])],
     };
     path = `/api/external/v2/open-set-package/${row.provider_booking_id}/`;

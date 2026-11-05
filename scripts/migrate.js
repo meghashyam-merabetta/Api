@@ -1,32 +1,41 @@
+
 import { readFileSync } from 'node:fs';
 import { sequelize } from '../src/config/database.js';
 import { seedMasters } from './seed-masters.js';
 import { Lab } from '../src/models/lab.model.js';
 import { User } from '../src/models/user.model.js';
 import { Session } from '../src/models/session.model.js';
+
 try {
   const [native] = await sequelize.query(
     "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='products' AND column_name='product_name'",
     { type: 'SELECT' },
   );
+
   if (native)
     throw new Error(
       'Legacy migration runner is incompatible with the native team product schema. Use individually reviewed migrations; do not recreate legacy catalog tables.',
     );
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query('SELECT pg_advisory_xact_lock(771209)', { transaction });
+
     // Create missing authentication tables without altering existing tables.
     await User.sync({ transaction });
     await Session.sync({ transaction });
+
     await sequelize.query(
       readFileSync(new URL('../sql/001-customers.sql', import.meta.url), 'utf8'),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(new URL('../sql/002-masters.sql', import.meta.url), 'utf8'),
       { transaction },
     );
+
     await seedMasters(transaction);
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/003-customer-session-lifetime.sql', import.meta.url),
@@ -34,10 +43,12 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(new URL('../sql/004-labs.sql', import.meta.url), 'utf8'),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/005-family-member-details.sql', import.meta.url),
@@ -45,6 +56,7 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/006-family-member-birthdate.sql', import.meta.url),
@@ -52,14 +64,17 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(new URL('../sql/007-lab-bookings.sql', import.meta.url), 'utf8'),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(new URL('../sql/008-location-address.sql', import.meta.url), 'utf8'),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/009-address-coordinates.sql', import.meta.url),
@@ -67,14 +82,21 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
-      readFileSync(new URL('../sql/005-admin-management.sql', import.meta.url), 'utf8'),
+      readFileSync(
+        new URL('../sql/005-admin-management.sql', import.meta.url),
+        'utf8',
+      ),
       { transaction },
     );
+
     const labs = JSON.parse(
       readFileSync(new URL('../seed/labs.json', import.meta.url), 'utf8'),
     );
+
     await Lab.bulkCreate(labs, { ignoreDuplicates: true, transaction });
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/010-app-registration-and-lab-master.sql', import.meta.url),
@@ -82,6 +104,7 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/011-redcliffe-integration.sql', import.meta.url),
@@ -89,6 +112,7 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/012-third-party-api-logs.sql', import.meta.url),
@@ -97,64 +121,85 @@ try {
       { transaction },
     );
   });
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/013-lab-booking-amendment.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/014-product-orders.sql', import.meta.url), 'utf8'),
   );
+
   for (const product of JSON.parse(
     readFileSync(new URL('../seed/products.json', import.meta.url), 'utf8'),
-  ))
+  )) {
     await sequelize.query(
       'INSERT INTO product_catalog(id,data) VALUES(:id,CAST(:data AS jsonb)) ON CONFLICT(id) DO NOTHING',
-      { replacements: { id: product.id, data: JSON.stringify(product) } },
+      {
+        replacements: {
+          id: product.id,
+          data: JSON.stringify(product),
+        },
+      },
     );
+  }
+
   await sequelize.query(
     readFileSync(new URL('../sql/015-stpl-otp.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/016-cart-wishlist.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/018-contact-coupons.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/019-provider-response-body.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/020-email-verification.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/021-phone-verification.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/023-order-inventory.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(new URL('../sql/024-order-numbers.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/025-order-display-numbers.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/031-lab-markup-capped-at-mrp.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query(
       readFileSync(
@@ -164,9 +209,11 @@ try {
       { transaction },
     );
   });
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query("SET LOCAL statement_timeout = '120s'", { transaction });
     await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/028-json-relational-storage.sql', import.meta.url),
@@ -174,14 +221,20 @@ try {
       ),
       { transaction },
     );
+
     await sequelize.query(
       readFileSync(new URL('../sql/029-app-json-scope.sql', import.meta.url), 'utf8'),
       { transaction },
     );
   });
+
   await sequelize.query(
-    readFileSync(new URL('../sql/030-retain-lab-catalogue.sql', import.meta.url), 'utf8'),
+    readFileSync(
+      new URL('../sql/030-retain-lab-catalogue.sql', import.meta.url),
+      'utf8',
+    ),
   );
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query(
       readFileSync(
@@ -191,14 +244,45 @@ try {
       { transaction },
     );
   });
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query(
       readFileSync(new URL('../sql/033-pricing-settings.sql', import.meta.url), 'utf8'),
       { transaction },
     );
   });
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+
+    await sequelize.query(
+      readFileSync(
+        new URL('../sql/038-lab-offer-coupon-eligibility.sql', import.meta.url),
+        'utf8',
+      ),
+      { transaction },
+    );
+  });
+
+  await sequelize.query(
+    readFileSync(new URL('../sql/039-home-banner-slots.sql', import.meta.url), 'utf8'),
+  );
+
+  await sequelize.transaction(async (transaction) => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+
+    await sequelize.query(
+      readFileSync(
+        new URL('../sql/040-lab-price-half-up.sql', import.meta.url),
+        'utf8',
+      ),
+      { transaction },
+    );
+  });
+
+  await sequelize.transaction(async (transaction) => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+
     await sequelize.query(
       readFileSync(
         new URL('../sql/036-random-order-number-width.sql', import.meta.url),
@@ -207,25 +291,42 @@ try {
       { transaction },
     );
   });
+
   console.log('Customer schema ready.');
+
+  // HDFC SDK session migration from origin/main.
+  await sequelize.query(
+    readFileSync(
+      new URL('../sql/037-hdfc-sdk-sessions.sql', import.meta.url),
+      'utf8',
+    ),
+  );
+
   await sequelize.query(
     readFileSync(new URL('../sql/017-catalog-sync.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
-    readFileSync(new URL('../sql/023-admin-catalog-base.sql', import.meta.url), 'utf8'),
+    readFileSync(
+      new URL('../sql/023-admin-catalog-base.sql', import.meta.url),
+      'utf8',
+    ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/024-admin-catalog-details.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/025-admin-catalog-compatibility.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.transaction(async (transaction) => {
     await sequelize.query(
       readFileSync(
@@ -235,30 +336,39 @@ try {
       { transaction },
     );
   });
+
   await sequelize.query(
     readFileSync(new URL('../sql/022-product-images.sql', import.meta.url), 'utf8'),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/027-admin-catalog-reliability.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/035-product-specification-fields.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/035-admin-integration-gaps.sql', import.meta.url),
       'utf8',
     ),
   );
+
   await sequelize.query(
-    readFileSync(new URL('../sql/036-product-soft-delete.sql', import.meta.url), 'utf8'),
+    readFileSync(
+      new URL('../sql/036-product-soft-delete.sql', import.meta.url),
+      'utf8',
+    ),
   );
+
   await sequelize.query(
     readFileSync(
       new URL('../sql/038-variant-image-galleries.sql', import.meta.url),

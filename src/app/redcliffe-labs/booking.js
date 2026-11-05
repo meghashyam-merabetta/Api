@@ -9,7 +9,7 @@ import { ageFromBirthdate } from '../../shared/birthdate.js';
 import { paths, providerRequest, providerSucceeded } from './client.js';
 import { availableSlots, todayInIndia } from './slots.js';
 
-import { resolveCoupon } from '../coupons/routes.js';
+import { activeCoupons, resolveCoupon } from '../coupons/routes.js';
 import { labPricing } from '../coupons/pricing.js';
 import { paise } from '../orders/orders.controller.js';
 
@@ -153,12 +153,21 @@ export async function createBooking(req, res) {
       throw new HttpError(422, 'A selected test is unavailable. Refresh the test list.');
     items.push({ id: item.id, quantity: 1, snapshot: rows[0].catalog_data });
   }
-  const coupon = await resolveCoupon(b.couponCode, 'labs');
   const pricingSettings = await readPricingSettings();
+  const eligibleSubtotal = items.reduce(
+    (sum, item) => sum + (item.snapshot.couponEligible ? paise(item.snapshot.price) : 0),
+    0,
+  );
+  let coupon = await resolveCoupon(b.couponCode, 'labs');
+  if (!coupon && eligibleSubtotal > 0)
+    coupon = (await activeCoupons('labs'))[0] || null;
+  if (coupon && eligibleSubtotal <= 0)
+    throw new HttpError(422, 'This coupon applies only to tests with an offer adjustment.');
   const pricing = labPricing(
     items.reduce((sum, item) => sum + paise(item.snapshot.price), 0),
     coupon,
     pricingSettings,
+    eligibleSubtotal,
   );
   const id = randomUUID();
   const outgoing = bookingPayload(
@@ -170,7 +179,6 @@ export async function createBooking(req, res) {
     b.slotId,
     id,
   );
-  if (coupon) outgoing.center_discount = pricing.discount;
   const availability = await availableSlots(
     b.collectionDate,
     outgoing.customer_latitude,

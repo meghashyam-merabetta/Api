@@ -14,11 +14,14 @@ import {
   listOrders,
 } from '../src/app/orders/orders.controller.js';
 import { paymentWebhook } from '../src/app/hdfc/callbacks.js';
+import { setupHdfc, bankRead, bankResponse } from '../test-support/hdfc.js';
+import { gatewayTransport } from '../src/app/hdfc/transport.js';
 assert.notEqual(env.NODE_ENV, 'production', 'Run against non-production data only');
 const marker = 'paymentcheck-' + randomUUID(),
   customerId = randomUUID();
 const saved = { ...env },
-  originalFetch = global.fetch;
+  originalRequest = gatewayTransport.request;
+const fixture = setupHdfc();
 let productId,
   variantId,
   offerId,
@@ -76,17 +79,14 @@ try {
     HDFC_WEBHOOK_USER: 'test-hook',
     HDFC_WEBHOOK_PASSWORD: 'test-password',
   });
-  global.fetch = async (url, options) => {
-    assert.equal(
-      options.headers.Authorization,
-      'Basic ' + Buffer.from('test-key:').toString('base64'),
-    );
+  gatewayTransport.request = async (url, options) => {
+    assert.equal(options.headers.Authorization, undefined);
     assert.ok(String(url).startsWith('https://smartgateway.hdfc.bank.in/'));
     if (options.method === 'POST') {
       sessionCalls++;
-      const body = JSON.parse(options.body);
+      const body = bankRead(JSON.parse(options.body));
       orderIds.push(body.order_id);
-      if (rejectSession) return Response.json({ status: 'error', error_code: 'access_denied' }, { status: 401 });
+      if (rejectSession) return { status: 401, text: '{"status":"error"}' };
       assert.equal(body.payment_page_client_id, 'test-client');
       const result = {
         order_id: body.order_id,
@@ -99,16 +99,16 @@ try {
         gateway_id: 1,
       };
       responses.set(body.order_id, result);
-      return Response.json({
+      return { status: 200, text: JSON.stringify(bankResponse({
         order_id: body.order_id,
         payment_links: {
           web: 'https://smartgateway.hdfc.bank.in/payment-page/' + body.order_id,
         },
-      });
+      })) };
     }
-    const id = String(url).split('/').pop();
+    const id = bankRead(JSON.parse(options.body)).order_id;
     assert.ok(responses.has(id));
-    return Response.json(responses.get(id));
+    return { status: 200, text: JSON.stringify(bankResponse(responses.get(id))) };
   };
   customer = await models.customer.create({
     id: customerId,
@@ -238,7 +238,8 @@ try {
     'PASS: real DB checkout/reservation, coupon amount, session retry, concurrent duplicate success, stock deduction once, failed-payment release, webhook auth, amount mismatch and late-success stock review. All gateway calls mocked; no real payment sent.',
   );
 } finally {
-  global.fetch = originalFetch;
+  gatewayTransport.request = originalRequest;
+  fixture.cleanup();
   Object.assign(env, saved);
   await query(
     'DELETE FROM order_stock_reservations WHERE order_id IN (SELECT id FROM product_checkouts WHERE customer_id=:id)',
