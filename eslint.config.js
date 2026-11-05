@@ -3,7 +3,15 @@ import globals from 'globals';
 import { defineConfig } from 'eslint/config';
 
 export default defineConfig([
-  { ignores: ['node_modules/**', '.npm-cache/**', 'coverage/**', 'dist/**'] },
+  {
+    ignores: [
+      'node_modules/**',
+      '.npm-cache/**',
+      'coverage/**',
+      'dist/**',
+      'deployment-review/**',
+    ],
+  },
   {
     files: ['**/*.js'],
     extends: [js.configs.recommended],
@@ -14,10 +22,13 @@ export default defineConfig([
     },
     linterOptions: { reportUnusedDisableDirectives: 'error' },
     rules: {
-      'eqeqeq': ['error', 'always'],
+      eqeqeq: ['error', 'always'],
       'no-var': 'error',
       'prefer-const': 'error',
-      'no-unused-vars': ['error', { args: 'after-used', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'error',
+        { args: 'after-used', argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
 ]);

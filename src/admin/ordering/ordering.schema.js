@@ -7,6 +7,7 @@ export const orderingQuery = z.object({
 
 
   status: text,
+  search: text,
   bookingId: z.string().trim().regex(/^\d{1,100}$/).optional(),
   orderId: z.string().trim().regex(/^MB\d{11}$/).optional(),
 

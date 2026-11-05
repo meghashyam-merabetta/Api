@@ -1,3 +1,6 @@
+import { vendorRoutes } from '../catalog/vendors.js';
+import { brandsRoutes } from '../admin/brands/brands.routes.js';
+import { variantAttributeRoutes } from '../admin/variants/variants.routes.js';
 import { contactRoutes } from '../app/contact/routes.js';
 import { bannerRoutes } from '../app/banners/routes.js';
 import { couponRoutes } from '../app/coupons/routes.js';
@@ -22,15 +25,54 @@ import { userRoutes as adminUsers } from '../admin/users/users.routes.js';
 import { adminManagementRoutes } from '../admin/management/admin.routes.js';
 import { labRoutes } from '../app/labs/lab.routes.js';
 import { orderingRoutes } from '../admin/ordering/ordering.routes.js';
+import { warehousesRoutes } from '../admin/warehouses/warehouses.routes.js';
+import { env } from '../config/env.js';
 import { getSettings, updateSettings, settingsSchema } from '../app/pricing/settings.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
-  { path: '/app', realm: 'app', routes: [{ method: 'get', path: '/pricing-settings', auth: false, handler: getSettings }] },
-  { path: '/admin/pricing-settings', realm: 'admin', routes: [
-    { method: 'get', path: '/', handler: getSettings },
-    { method: 'patch', path: '/', schema: settingsSchema, handler: updateSettings },
-  ] },
+  { path: '/admin/vendors', realm: 'admin', routes: vendorRoutes },
+  { path: '/admin/warehouses', realm: 'admin', routes: warehousesRoutes },
+  {
+    path: '/admin/orders',
+    realm: 'admin',
+    routes: orderingRoutes
+      .filter((route) => route.path.startsWith('/products'))
+      .map((route) => ({ ...route, path: route.path.slice('/products'.length) || '/' })),
+  },
+  {
+    path: '/admin/image-storage',
+    realm: 'admin',
+    routes: [
+      {
+        method: 'get',
+        path: '/',
+        handler: (_req, res) =>
+          res.json({
+            data: {
+              mode: env.IMAGE_STORAGE_MODE,
+              isolated: env.IMAGE_STORAGE_MODE === 'local',
+              bucket: env.IMAGE_STORAGE_MODE === 's3' ? env.IMAGE_S3_BUCKET : null,
+            },
+          }),
+      },
+    ],
+  },
+  {
+    path: '/app',
+    realm: 'app',
+    routes: [
+      { method: 'get', path: '/pricing-settings', auth: false, handler: getSettings },
+    ],
+  },
+  {
+    path: '/admin/pricing-settings',
+    realm: 'admin',
+    routes: [
+      { method: 'get', path: '/', handler: getSettings },
+      { method: 'patch', path: '/', schema: settingsSchema, handler: updateSettings },
+    ],
+  },
   { path: '/admin/ordering', realm: 'admin', routes: orderingRoutes },
   { path: '/app', realm: 'app', routes: bannerRoutes },
   { path: '/app', realm: 'app', routes: contactRoutes },
@@ -40,6 +82,10 @@ const modules = [
   { path: '/app/locations', realm: 'app', routes: locationRoutes },
   { path: '/app', realm: 'app', routes: bookingRoutes },
   { path: '/app/labs', realm: 'app', routes: labRoutes },
+  // Older clients call lablisting directly under /api or /api/app.
+  // Reuse the same public GET handler and strict query validation.
+  { path: '/app', realm: 'app', routes: labRoutes },
+  { path: '/', realm: 'app', routes: labRoutes },
   { path: '/app/auth', realm: 'app', routes: customerAuth },
   { path: '/app/customers', realm: 'app', routes: customerRoutes },
   { path: '/app/products', realm: 'app', routes: productRoutes },
@@ -47,6 +93,8 @@ const modules = [
   { path: '/app/wishlist', realm: 'app', routes: wishlistRoutes },
   { path: '/app', realm: 'app', routes: masterRoutes },
   { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
+  { path: '/admin/brands', realm: 'admin', routes: brandsRoutes },
+  { path: '/admin/variant-attributes', realm: 'admin', routes: variantAttributeRoutes },
   { path: '/admin/products', realm: 'admin', routes: adminProducts },
   { path: '/admin/categories', realm: 'admin', routes: adminCategories },
   { path: '/admin/users', realm: 'admin', routes: adminUsers },

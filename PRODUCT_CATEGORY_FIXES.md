@@ -7,6 +7,7 @@ This project maps Sequelize models to the existing PostgreSQL schema supplied fo
 - Product create/update category changes use Sequelize transactions.
 - Category deletion checks `product_categories` and child categories before deletion.
 - No migration, `sequelize.sync`, or schema-changing operation is run by startup.
+- Catalog corrections, migration instructions, and new brand/variant contracts are documented in [ADMIN-CATALOG-API.md](ADMIN-CATALOG-API.md).
 
 ## Configure and run
 

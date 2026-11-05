@@ -4,6 +4,7 @@ node_modules/
 .env.*
 !.env.example
 coverage/
+.local-images/
 *.log
 
 # Local credentials and cookies

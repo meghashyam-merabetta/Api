@@ -1,12 +1,19 @@
+import { deleteCategory, deletionPreview } from '../../catalog/categories.js';
+
 import {
+  getCategoryImage,
+  uploadCategoryImage,
+  deleteCategoryImage,
+  categoryTree,
   listCategories,
   getCategory,
   createCategory,
   updateCategory,
-  deleteCategory,
 } from './categories.controller.js';
 
 import {
+  treeQuerySchema,
+  deleteCategoryQuerySchema,
   listQuerySchema,
   categoryIdParamsSchema,
   createCategorySchema,
@@ -14,6 +21,49 @@ import {
 } from './categories.schema.js';
 
 export const categoriesRoutes = [
+  {
+    method: 'get',
+    path: '/:categoryId/deletion-preview',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: deletionPreview,
+  },
+
+  {
+    method: 'get',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: getCategoryImage,
+  },
+  {
+    method: 'post',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: uploadCategoryImage,
+  },
+  {
+    method: 'put',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: uploadCategoryImage,
+  },
+  {
+    method: 'delete',
+    path: '/:categoryId/image',
+    params: categoryIdParamsSchema,
+    auth: true,
+    handler: deleteCategoryImage,
+  },
+  {
+    method: 'get',
+    path: '/tree',
+    query: treeQuerySchema,
+    auth: true,
+    handler: categoryTree,
+  },
   {
     method: 'get',
     path: '/',
@@ -48,6 +98,7 @@ export const categoriesRoutes = [
     path: '/:categoryId',
     params: categoryIdParamsSchema,
     auth: true,
+    query: deleteCategoryQuerySchema,
     handler: deleteCategory,
   },
 ];

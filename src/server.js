@@ -1,3 +1,5 @@
+import { assertTeamSchemaReady } from './catalog/readiness.js';
+import { startImageCleanupWorker } from './shared/image-storage.js';
 import { app } from './app.js';
 import { env } from './config/env.js';
 import { sequelize } from './config/database.js';
@@ -6,6 +8,8 @@ import { startCatalogSyncWorker } from './app/redcliffe-labs/catalog.js';
 
 import { startPaymentReconciliation } from './app/orders/reconcile.js';
 await sequelize.authenticate();
+await assertTeamSchemaReady();
+const stopImageCleanupWorker = startImageCleanupWorker();
 const stopPaymentReconciliation = startPaymentReconciliation();
 const stopCatalogSyncWorker = startCatalogSyncWorker();
 const server = app.listen(env.PORT, () =>
@@ -23,6 +27,7 @@ function shutdown(signal) {
   const timeout = setTimeout(() => process.exit(1), 10000).unref();
   server.close(async () => {
     try {
+      await stopImageCleanupWorker();
       await sequelize.close();
       clearTimeout(timeout);
       process.exitCode = 0;
