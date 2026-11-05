@@ -1,9 +1,13 @@
 import { z } from 'zod';
 import { email, password } from '../../shared/schema.js';
+import { DEFAULT_CMS_ADMIN_PERMISSIONS } from '../permissions.js';
 
 export const recordIdSchema = z.object({ id: z.uuid() }).strict();
 
-const permissionsSchema = z.array(z.string().trim().min(1).max(100)).max(100).default([]);
+const permissionsSchema = z
+  .array(z.string().trim().min(1).max(100))
+  .max(100)
+  .default([...DEFAULT_CMS_ADMIN_PERMISSIONS]);
 
 const approvalSchema = z
   .object({

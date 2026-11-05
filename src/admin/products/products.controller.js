@@ -544,12 +544,20 @@ async function getFullProduct(id, transaction) {
     `
     SELECT
       p.*,
-      (to_jsonb(d) - 'product_id') AS details
+      (to_jsonb(d) - 'product_id') AS details,
+      category.name AS category_name,
+      subcategory.name AS subcategory_name
 
     FROM public.products p
 
     LEFT JOIN public.product_details d
       ON d.product_id = p.id
+
+    LEFT JOIN public.categories category
+      ON category.id = p.category_id
+
+    LEFT JOIN public.categories subcategory
+      ON subcategory.id = p.subcategory_id
 
     WHERE p.id = :id
       AND COALESCE(p.is_deleted, false) = false
@@ -628,6 +636,12 @@ export async function listProducts(req, res) {
     LEFT JOIN public.product_details d
       ON d.product_id = p.id
 
+    LEFT JOIN public.categories category
+      ON category.id = p.category_id
+
+    LEFT JOIN public.categories subcategory
+      ON subcategory.id = p.subcategory_id
+
     WHERE ${where.join(' AND ')}
   `;
 
@@ -647,7 +661,9 @@ export async function listProducts(req, res) {
     `
     SELECT
       p.*,
-      (to_jsonb(d) - 'product_id') AS details
+      (to_jsonb(d) - 'product_id') AS details,
+      category.name AS category_name,
+      subcategory.name AS subcategory_name
 
     ${from}
 

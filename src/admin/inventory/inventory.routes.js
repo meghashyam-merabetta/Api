@@ -5,6 +5,7 @@ import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { models } from '../../models/index.js';
 import { HttpError } from '../../shared/errors.js';
+import { ADMIN_PERMISSIONS } from '../permissions.js';
 
 // One products.id represents one independent variant.
 // Warehouse stock belongs to product_inventory.
@@ -87,7 +88,9 @@ async function requirePermission(req) {
 
   if (
     !profile?.permissions?.some((permission) =>
-      ['*', 'admin.manage', 'inventory.adjust'].includes(permission),
+      ['*', ADMIN_PERMISSIONS.manage, ADMIN_PERMISSIONS.inventoryAdjust].includes(
+        permission,
+      ),
     )
   ) {
     throw new HttpError(403, 'Inventory adjustment permission required');
