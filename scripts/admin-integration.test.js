@@ -13,6 +13,7 @@ import { createLocalImageClient } from '../src/shared/image-client.js';
 import { updateProductSchema } from '../src/admin/products/products.schema.js';
 import { validateAdditionalProductDetails } from '../src/shared/product-details.js';
 import { createWarehouseSchema } from '../src/admin/warehouses/warehouses.schema.js';
+import { createAdminSchema } from '../src/admin/management/admin.schema.js';
 
 test('additional details are typed and partial updates validate stored relationships', () => {
   for (const input of [
@@ -55,6 +56,31 @@ test('additional details are typed and partial updates validate stored relations
   assert.equal(
     createWarehouseSchema.safeParse({ warehouseName: 'Only name' }).success,
     false,
+  );
+});
+
+test('normal CMS admins receive inventory adjustment permission by default', () => {
+  const result = createAdminSchema.parse({
+    name: 'CMS Admin',
+    email: 'cms-admin@example.invalid',
+    password: 'Valid-password-123',
+    city: 'Pune',
+    pincode: '411001',
+    state: 'Maharashtra',
+  });
+
+  assert.deepEqual(result.permissions, ['inventory.adjust']);
+  assert.deepEqual(
+    createAdminSchema.parse({
+      name: 'Restricted Admin',
+      email: 'restricted@example.invalid',
+      password: 'Valid-password-123',
+      city: 'Pune',
+      pincode: '411001',
+      state: 'Maharashtra',
+      permissions: [],
+    }).permissions,
+    [],
   );
 });
 
