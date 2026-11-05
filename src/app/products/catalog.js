@@ -24,11 +24,81 @@ export function categoryIcon(name) {
 }
 
 export async function productCatalog(transaction) {
-  return nativeCatalog(transaction, productImageUrl, categoryIcon);
+  const categories = await sequelize.query(
+    'SELECT id::text,name,slug,parent_id::text AS "parentId",sort_order AS "sortOrder",description,image_url AS image FROM categories WHERE is_active ORDER BY sort_order,id',
+    { type: QueryTypes.SELECT, transaction },
+  );
+  const brands = await sequelize.query(
+    'SELECT id::text,name,slug,logo_url AS logo,description FROM brands WHERE is_active ORDER BY name,id',
+    { type: QueryTypes.SELECT, transaction },
+  );
+  const rows = await sequelize.query(
+    `SELECT p.id::text AS product_id,p.product_name AS name,d.full_description AS description,d.short_description,
+    p.brand_id::text,b.name AS brand_name,p.sku,d.specifications AS attributes,
+    p.selling_price,p.mrp,
+    COALESCE((SELECT sum(greatest(0,i.available_quantity)) FROM product_inventory i WHERE i.product_id=p.id AND i.is_active),0)::int AS stock,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id::text,'name',c.name) ORDER BY CASE WHEN c.id=p.subcategory_id THEN 0 ELSE 1 END,c.id) FROM categories c WHERE c.id IN (p.category_id,p.subcategory_id) AND c.is_active),'[]') AS categories,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('url',pi.image_url,'alt',pi.alt_text) ORDER BY pi.is_primary DESC,pi.sort_order,pi.id) FROM product_images pi WHERE pi.product_id=p.id),'[]') AS images
+    FROM products p LEFT JOIN product_details d ON d.product_id=p.id
+    LEFT JOIN brands b ON b.id=p.brand_id
+    WHERE p.product_status='active' AND p.is_active AND NOT p.is_deleted
+      AND p.selling_price>0 AND p.mrp>=p.selling_price
+    ORDER BY p.product_name,p.id`,
+    { type: QueryTypes.SELECT, transaction },
+  );
+  const products = rows.filter((row) => row.categories.length).map((row) => {
+    const images = [...new Set(row.images.map((i) => i.url).filter(Boolean).map(productImageUrl))].slice(0, 6);
+    const categoryIds = new Set(row.categories.map((c) => c.id));
+    for (const id of [...categoryIds]) {
+      let parent = categories.find((c) => c.id === id)?.parentId;
+      while (parent && !categoryIds.has(parent)) {
+        categoryIds.add(parent);
+        parent = categories.find((c) => c.id === parent)?.parentId;
+      }
+    }
+    return {
+      id: 'product:' + row.product_id,
+      productId: row.product_id,
+      name: row.name.trim(),
+      subtitle:
+        row.short_description?.trim() ||
+        row.brand_name ||
+        row.name.trim(),
+      description: row.description || row.short_description || '',
+      brandId: row.brand_id,
+      brandName: row.brand_name || '',
+      variantName: '',
+      sku: row.sku,
+      attributes: row.attributes,
+      categoryId: row.categories[0].id,
+      categoryIds: [...categoryIds],
+      categories: [...categoryIds].map((id) => categories.find((c) => c.id === id)?.name).filter(Boolean),
+      price: Number(row.selling_price),
+      mrp: Number(row.mrp),
+      stock: row.stock,
+      available: row.stock > 0,
+      image: images[0] || 'medicine.png',
+      images,
+      rating: 'Not rated',
+    };
+  });
+  return {
+    categories: categories.map((c) => ({
+      ...c,
+      image: c.image?.trim() ? productImageUrl(c.image.trim()) : null,
+      icon: categoryIcon(c.name),
+      color: '#77409A',
+      bg: '#F8F3FC',
+    })),
+    brands,
+    products,
+    labs: [],
+    tests: [],
+    offerings: [],
+  };
 }
 export async function sellableProduct(id, quantity, transaction) {
-  if (/^[1-9]\d*$/.test(id)) id = 'product:' + id;
-  if (!/^product:[1-9]\d*$/.test(id))
+  if (!/^product:\d+$/.test(id))
     throw new HttpError(
       422,
       'This product is no longer available. Please choose it again from Products.',

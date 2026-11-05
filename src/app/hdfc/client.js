@@ -51,6 +51,8 @@ export async function gatewayRequest(path, customerId, body) {
   };
   const start = Date.now();
   await recordProviderCall(log);
+  let stage = 'request';
+  let httpStatus;
   try {
     const encrypted = await encryptGatewayPayload(session ? body : { order_id: path.slice('/orders/'.length) }, keys);
     const response = await gatewayTransport.request(gatewayOrigin() + (session ? '/v4/session' : '/v4/order-status'), {
@@ -64,6 +66,8 @@ export async function gatewayRequest(path, customerId, body) {
       },
       body: JSON.stringify(encrypted),
     });
+    httpStatus = response.status;
+    stage = 'http';
     if (response.status < 200 || response.status >= 300) {
       const error = new HttpError(502, [401, 403].includes(response.status)
         ? 'HDFC payment access was rejected. Please contact support to check the JWT configuration. Your cart is unchanged.'
@@ -72,6 +76,7 @@ export async function gatewayRequest(path, customerId, body) {
       throw error;
     }
     // Plaintext or incorrectly signed successes must never update an order.
+    stage = 'response_verification';
     const data = await decryptGatewayPayload(JSON.parse(response.text), keys);
     await recordProviderCall({
       ...log,
@@ -92,9 +97,9 @@ export async function gatewayRequest(path, customerId, body) {
   } catch (e) {
     await recordProviderCall({
       ...log,
-      httpStatus: e.gatewayStatus,
+      httpStatus: e.gatewayStatus ?? httpStatus,
       durationMs: Date.now() - start,
-      failure: ['TimeoutError', 'AbortError'].includes(e.name) ? 'timeout' : 'gateway_error',
+      failure: ['TimeoutError', 'AbortError'].includes(e.name) ? 'timeout' : stage === 'http' ? 'gateway_http_error' : stage === 'response_verification' ? 'gateway_response_verification_error' : 'gateway_request_error',
     });
     throw e instanceof HttpError
       ? e

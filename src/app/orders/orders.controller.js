@@ -37,12 +37,8 @@ export function verifiedStatus(row, data) {
       'Payment details could not be verified. Please contact support.',
     );
   // Gateway environment, not Node runtime mode, separates UAT from live payments.
-  if (
-    data.status === 'CHARGED' &&
-    !isLivePayment(row, data) &&
-    !isSandboxPayment(row, data)
-  )
-    return 'FAILED';
+  if (data.status === 'CHARGED' && !isLivePayment(row, data) && !isSandboxPayment(row, data))
+    throw new HttpError(502, 'Payment success could not be verified. Please check the order status again.');
   return data.status === 'CHARGED'
     ? 'CHARGED'
     : ['AUTHENTICATION_FAILED', 'AUTHORIZATION_FAILED', 'JUSPAY_DECLINED'].includes(
@@ -166,7 +162,11 @@ export async function applyPaymentStatus(id, data) {
     if (row.payment_status === 'CHARGED') return row;
     let stock = row.stock_state;
     const testOrder = isTestCheckout(row);
-    if (testOrder && stock === 'reserved' && status !== 'PENDING') {
+    const legacyItems = !Array.isArray(row.payload?.items) || row.payload.items.some(item => !/^product:\d+$/.test(item.id));
+    if (legacyItems && status !== 'PENDING' && (stock === 'reserved' || stock === 'released')) {
+      stock = 'review';
+    }
+    if (!legacyItems && testOrder && stock === 'reserved' && status !== 'PENDING') {
       await settleStock(row.id, false, transaction);
       stock = 'released';
     }
@@ -200,7 +200,7 @@ export async function applyPaymentStatus(id, data) {
           ? 'Payment received - stock review'
           : 'Confirmed'
         : status === 'FAILED'
-          ? 'Payment failed'
+          ? 'Cancelled'
           : 'Payment pending';
     const payment =
       status === 'CHARGED' ? 'Paid' : status === 'FAILED' ? 'Failed' : 'Pending';
@@ -248,6 +248,7 @@ export async function applyPaymentStatus(id, data) {
 export function orderView(row) {
   return {
     ...row.payload,
+    ...(row.payment_status === 'FAILED' ? { status: 'Cancelled', paymentStatus: 'Failed' } : {}),
     orderNumber: row.order_number || row.id,
     isTestOrder: isTestCheckout(row),
     fulfillmentBlocked:
@@ -501,8 +502,9 @@ export async function listOrders(req, res) {
     `SELECT * FROM orders WHERE customer_id=:id AND payment_status IN ('CHARGED','COD')
        AND COALESCE(payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(payload->>'isTestOrder','false')<>'true'
      UNION ALL
-     SELECT * FROM product_checkouts WHERE customer_id=:id AND payment_status IN ('CHARGED','COD')
-       AND (payload->>'paymentEnvironment'='sandbox' OR payload->>'isTestOrder'='true')
+     SELECT * FROM product_checkouts c WHERE customer_id=:id
+       AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.id=c.id AND o.payment_status IN ('CHARGED','COD')
+         AND COALESCE(o.payload->>'paymentEnvironment','')<>'sandbox' AND COALESCE(o.payload->>'isTestOrder','false')<>'true')
      ORDER BY created_at DESC`,
     { replacements: { id: req.credential.id }, type: QueryTypes.SELECT },
   );
