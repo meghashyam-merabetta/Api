@@ -166,6 +166,23 @@ test(
           assert.equal(edited.id, product.id);
           assert.equal(edited.details.size, 'M');
           assert.equal(edited.details.specifications.size, 'm');
+          const classified = ok(
+            await write('patch', `products/${sibling.id}`, {
+              category_id: Number(category.id),
+              subcategory_id: Number(sub.id),
+            }),
+          );
+          assert.equal(classified.category_id, category.id);
+          assert.equal(classified.subcategory_id, sub.id);
+          assert.equal(classified.category_name, 'Daily Living');
+          assert.equal(classified.subcategory_name, 'Diapers');
+          const classifiedList = ok(
+            await agent.get(`/api/admin/products?subcategory_id=${sub.id}`),
+          );
+          assert.equal(
+            classifiedList.find((row) => row.id === sibling.id).subcategory_name,
+            'Diapers',
+          );
           assert.equal((await query('SELECT count(*)::int n FROM products'))[0].n, 2);
           const related = ok(
             await agent.get(`/api/admin/products/${product.id}/related`),
@@ -235,6 +252,18 @@ test(
             in_transit_quantity: 5,
           };
           ok(await write('put', `products/${sibling.id}/inventory`, body));
+          const freshInventory = ok(
+            await agent.get(`/api/admin/products/${sibling.id}/inventory`),
+          );
+          assert.equal(freshInventory.available_quantity, 8);
+          assert.equal(freshInventory.warehouses[0].available_quantity, 8);
+          const freshList = ok(
+            await agent.get(`/api/admin/products?subcategory_id=${sub.id}`),
+          );
+          assert.equal(
+            freshList.find((row) => row.id === sibling.id).stock_quantity,
+            8,
+          );
           assert.equal(
             ok(await write('put', `products/${sibling.id}/inventory`, body))
               .available_quantity,

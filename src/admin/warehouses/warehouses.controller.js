@@ -96,7 +96,7 @@ async function requireNoInventory(id, transaction) {
   if (inventory.total > 0) {
     throw new HttpError(
       409,
-      'Warehouse has inventory records; move or reconcile them before deactivating',
+      'Warehouse has inventory records; move or reconcile them before deleting it',
     );
   }
 }
