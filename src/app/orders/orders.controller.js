@@ -95,7 +95,7 @@ export async function findOrder(id, customer) {
 export async function syncOrder(row, { force = false } = {}) {
   if (row.payment_status === 'COD') return row;
   if (row.payment_status === 'CHARGED' && !force) return row;
-  const data = await gatewayRequest('/orders/' + row.id, row.customer_id);
+  const data = await gatewayRequest('/orders/' + row.id, row.customer_id, undefined, row.payload?.gatewayAuthMode || 'jwt');
   const status = verifiedStatus(row, data);
   if (row.payment_status === 'CHARGED' && status !== 'CHARGED')
     throw new HttpError(409, 'Payment status changed. Please contact support before fulfilment.');
@@ -199,12 +199,16 @@ export function orderView(row) {
       : paymentUrl(row.payment_url),
   };
 }
+export function paymentGatewayMode(req) {
+  return typeof req.get === 'function' && req.get('x-app-client') !== 'native' ? 'basic' : 'jwt';
+}
 export async function createOrder(req, res) {
   const b = req.validated;
   const cod = b.paymentMethod === 'cod';
   const testOrder = env.HDFC_ENVIRONMENT === 'sandbox';
+  const gatewayAuthMode = paymentGatewayMode(req);
   if (!cod) {
-    try { requireGateway(); }
+    try { requireGateway(gatewayAuthMode); }
     catch (error) {
       await recordProviderCall({ provider: 'hdfc', providerRequestId: randomUUID(), endpoint: '/session', method: 'POST', failure: 'gateway_configuration_error', responseBody: JSON.stringify({ environment: env.HDFC_ENVIRONMENT, stage: 'configuration', reason: error.message }) });
       throw error;
@@ -268,6 +272,7 @@ export async function createOrder(req, res) {
       status: cod ? (testOrder ? 'Test order - not for fulfilment' : 'Confirmed') : 'Payment pending',
       paymentMethod: cod ? 'cod' : 'online',
       paymentEnvironment: env.HDFC_ENVIRONMENT,
+      gatewayAuthMode,
       isTestOrder: testOrder,
       fulfillmentBlocked: testOrder,
       paymentStatus: cod ? 'Cash on delivery' : 'Pending',
@@ -356,7 +361,7 @@ export async function createOrder(req, res) {
       description: 'Merabetta product order',
       first_name: customer.firstName || '',
       last_name: customer.lastName || '',
-    });
+    }, row.payload.gatewayAuthMode || 'jwt');
     const url = paymentUrl(result.payment_links?.web);
     if (result.order_id !== row.id || !url) throw Error('Invalid gateway session');
     if (result.sdk_payload && typeof result.sdk_payload === 'object' && result.sdk_payload.payload) {

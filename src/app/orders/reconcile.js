@@ -1,6 +1,5 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
-import { requireGateway } from '../hdfc/client.js';
 import { syncOrder } from './orders.controller.js';
 import { logger } from '../../config/logger.js';
 
@@ -9,11 +8,6 @@ export function startPaymentReconciliation() {
     stopped = false;
   const tick = async () => {
     if (running || stopped) return;
-    try {
-      requireGateway();
-    } catch {
-      return;
-    }
     running = true;
     try {
       // A process may die after sending the bank request. Recover by status lookup,
@@ -23,7 +17,7 @@ export function startPaymentReconciliation() {
       // Claim a small batch so multiple API processes do not poll the same order.
       const rows = await sequelize.transaction(async (transaction) => {
         const claimed = await sequelize.query(
-          "SELECT * FROM product_checkouts WHERE stock_state IN ('reserved','released') AND payment_status<>'CHARGED' AND created_at>now()-interval '7 days' AND (payment_checked_at IS NULL OR payment_checked_at<now()-interval '2 minutes') ORDER BY payment_checked_at NULLS FIRST,created_at LIMIT 5 FOR UPDATE SKIP LOCKED",
+          "SELECT * FROM product_checkouts WHERE stock_state IN ('reserved','released') AND payment_status<>'CHARGED' AND COALESCE(payload->>'reconciliationCancelled','false')<>'true' AND created_at>now()-interval '7 days' AND (payment_checked_at IS NULL OR payment_checked_at<now()-interval '2 minutes') ORDER BY payment_checked_at NULLS FIRST,created_at LIMIT 5 FOR UPDATE SKIP LOCKED",
           { type: QueryTypes.SELECT, transaction },
         );
         for (const row of claimed)
