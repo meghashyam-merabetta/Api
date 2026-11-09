@@ -1,13 +1,13 @@
 import https from 'node:https';
 
-// HDFC's JWT status endpoint requires a GET with an encrypted JSON body.
-// Fetch cannot send GET bodies. HTTPS.request also lets us reject redirects.
+// JWT session/status requests use POST with an encrypted JSON body.
+// Basic-auth status uses GET without a body. Never follow redirects with credentials.
 export const gatewayTransport = {
   request(url, { method, headers, body, timeoutMs = 12000 }) {
     return new Promise((resolve, reject) => {
       const request = https.request(url, {
         method,
-        headers: { ...headers, 'Content-Length': Buffer.byteLength(body) },
+        headers: { ...headers, ...(body !== undefined ? { 'Content-Length': Buffer.byteLength(body) } : {}) },
         signal: AbortSignal.timeout(timeoutMs),
       }, response => {
         const chunks = [];

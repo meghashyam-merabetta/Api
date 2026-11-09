@@ -1,4 +1,6 @@
-import { timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { recordProviderCall } from '../../shared/provider-log.js';
+import { safeGatewayRequest } from './diagnostic-log.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../shared/errors.js';
 import { findOrder, syncOrder } from '../orders/orders.controller.js';
@@ -16,18 +18,26 @@ export async function paymentWebhook(req, res) {
   const actual = Buffer.from(req.get('authorization') || '');
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual))
     throw new HttpError(401, 'Invalid webhook credentials');
-  const id = req.body?.content?.order?.order_id || req.body?.content?.txn?.order_id;
-  if (typeof id !== 'string' || !/^MB(?:[0-9]{11}|[a-f0-9]{18})$/.test(id))
-    return res.status(200).json({ received: true });
-  let row;
+  const rawId = req.body?.content?.order?.order_id || req.body?.content?.txn?.order_id;
+  const id = typeof rawId === 'string' && /^MB(?:[0-9]{11}|[a-f0-9]{18})$/.test(rawId) ? rawId : null;
+  const log = { provider: 'hdfc', providerRequestId: randomUUID(), endpoint: '/webhook', method: 'POST' };
+  const start = Date.now();
+  const request = safeGatewayRequest(req.body);
+  let result = 'ignored_invalid_order';
   try {
-    row = await findOrder(id);
-  } catch (e) {
-    if (e.status === 404) return res.json({ received: true });
-    throw e;
+    if (id) {
+      let row;
+      try { row = await findOrder(id); }
+      catch (error) { if (error.status !== 404) throw error; }
+      if (row) { await syncOrder(row); result = 'verified'; }
+      else result = 'ignored_unknown_order';
+    }
+    await recordProviderCall({ ...log, httpStatus: 200, durationMs: Date.now() - start, responseBody: JSON.stringify({ order_id: id, request, result, response: { received: true } }) });
+    return res.status(200).json({ received: true });
+  } catch (error) {
+    await recordProviderCall({ ...log, httpStatus: Number.isInteger(error.status) ? error.status : 500, durationMs: Date.now() - start, failure: 'webhook_verification_error', responseBody: JSON.stringify({ order_id: id, request, result: 'verification_deferred' }) });
+    throw error;
   }
-  await syncOrder(row);
-  res.json({ received: true });
 }
 export async function paymentReturn(req, res) {
   res.set('Cache-Control', 'no-store').set('Referrer-Policy', 'no-referrer')
