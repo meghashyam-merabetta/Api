@@ -1,6 +1,7 @@
 import { readPricingSettings, chargeBelow } from '../pricing/settings.js';
 import { formatAddress } from '../../shared/address.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { recordProviderCall } from '../../shared/provider-log.js';
 import { nextOrderId } from './order-number.js';
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
@@ -202,7 +203,13 @@ export async function createOrder(req, res) {
   const b = req.validated;
   const cod = b.paymentMethod === 'cod';
   const testOrder = env.HDFC_ENVIRONMENT === 'sandbox';
-  if (!cod) requireGateway();
+  if (!cod) {
+    try { requireGateway(); }
+    catch (error) {
+      await recordProviderCall({ provider: 'hdfc', providerRequestId: randomUUID(), endpoint: '/session', method: 'POST', failure: 'gateway_configuration_error', responseBody: JSON.stringify({ environment: env.HDFC_ENVIRONMENT, stage: 'configuration', reason: error.message }) });
+      throw error;
+    }
+  }
   const customer = req.credential;
   if (!customer.phone || !customer.email)
     throw new HttpError(

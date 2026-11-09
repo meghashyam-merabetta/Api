@@ -37,8 +37,28 @@ export function requireGateway() {
     throw new HttpError(503, 'A public HTTPS payment return URL is required.');
   return loadJwtKeys(env);
 }
+// Retain only recognized diagnostic categories; arbitrary bank messages can contain secrets or customer data.
+export function gatewayErrorDetails(text) {
+  try {
+    const data = JSON.parse(text);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const candidates = [data.error_code, data.errorCode, data.code, data.error?.code];
+    const code = candidates.find(value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(value));
+    const messages = [data.error_message, data.errorMessage, data.message, typeof data.error === 'string' ? data.error : data.error?.message];
+    const message = messages.find(value => typeof value === 'string') || '';
+    const reasons = [
+      [/invalid signature|signature (?:is )?(?:invalid|verification failed)/i, 'Gateway reported an invalid signature'],
+      [/(?:jwt|token).{0,30}expired|expired.{0,30}(?:jwt|token)/i, 'Gateway reported an expired JWT or token'],
+      [/(?:invalid|unknown) (?:key id|key identifier|kid)/i, 'Gateway reported an invalid key ID'],
+      [/(?:invalid|unknown) merchant|merchant.{0,20}not found/i, 'Gateway reported an invalid merchant'],
+      [/(?:decryption|decrypt).{0,25}(?:failed|error)|unable to decrypt/i, 'Gateway could not decrypt the request'],
+      [/invalid (?:credentials|authentication)|authentication failed|unauthori[sz]ed/i, 'Gateway reported an authentication failure'],
+    ];
+    const reason = reasons.find(([pattern]) => pattern.test(message))?.[1];
+    return code || reason ? JSON.stringify({ ...(code ? { error_code: code } : {}), ...(reason ? { reason } : {}) }) : null;
+  } catch { return null; }
+}
 export async function gatewayRequest(path, customerId, body) {
-  const keys = requireGateway();
   if (path !== '/session' && !/^\/orders\/[A-Za-z0-9]{1,20}$/.test(path))
     throw Error('Invalid gateway path');
   const session = path === '/session';
@@ -51,9 +71,12 @@ export async function gatewayRequest(path, customerId, body) {
   };
   const start = Date.now();
   await recordProviderCall(log);
-  let stage = 'request';
+  let stage = 'configuration';
   let httpStatus;
+  let errorDetails;
   try {
+    const keys = requireGateway();
+    stage = 'request';
     const encrypted = await encryptGatewayPayload(session ? body : { order_id: path.slice('/orders/'.length) }, keys);
     const response = await gatewayTransport.request(gatewayOrigin() + (session ? '/v4/session' : '/v4/order-status'), {
       method: log.method,
@@ -69,6 +92,7 @@ export async function gatewayRequest(path, customerId, body) {
     httpStatus = response.status;
     stage = 'http';
     if (response.status < 200 || response.status >= 300) {
+      errorDetails = gatewayErrorDetails(response.text);
       const error = new HttpError(502, [401, 403].includes(response.status)
         ? 'HDFC payment access was rejected. Please contact support to check the JWT configuration. Your cart is unchanged.'
         : 'HDFC could not verify this request. Please check your saved order.');
@@ -98,8 +122,9 @@ export async function gatewayRequest(path, customerId, body) {
     await recordProviderCall({
       ...log,
       httpStatus: e.gatewayStatus ?? httpStatus,
+      responseBody: JSON.stringify({ order_id: session && typeof body?.order_id === 'string' && /^[A-Za-z0-9]{1,20}$/.test(body.order_id) ? body.order_id : session ? null : path.slice('/orders/'.length), environment: env.HDFC_ENVIRONMENT, stage, ...(['AbortError', 'TimeoutError'].includes(e.name) ? { reason: 'Gateway request timed out' } : {}), ...(errorDetails ? JSON.parse(errorDetails) : {}) }),
       durationMs: Date.now() - start,
-      failure: ['TimeoutError', 'AbortError'].includes(e.name) ? 'timeout' : stage === 'http' ? 'gateway_http_error' : stage === 'response_verification' ? 'gateway_response_verification_error' : 'gateway_request_error',
+      failure: ['TimeoutError', 'AbortError'].includes(e.name) ? 'timeout' : stage === 'configuration' ? 'gateway_configuration_error' : stage === 'http' ? 'gateway_http_error' : stage === 'response_verification' ? 'gateway_response_verification_error' : 'gateway_request_error',
     });
     throw e instanceof HttpError
       ? e

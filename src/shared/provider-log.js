@@ -38,10 +38,10 @@ export async function recordProviderCall(event) {
         logging: false,
       },
     );
-  } catch {
+  } catch (error) {
     // Logging failure must not turn an accepted provider booking into a failed booking.
     logger.error(
-      { provider: event.provider, providerRequestId: event.providerRequestId },
+      { provider: event.provider, providerRequestId: event.providerRequestId, databaseCode: /^[0-9A-Z]{5}$/.test(error?.original?.code || '') ? error.original.code : undefined },
       'Could not persist third-party API log',
     );
   }
