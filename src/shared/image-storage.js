@@ -1,6 +1,6 @@
 import { VariantImage } from '../models/variant-image.model.js';
 import { randomUUID } from 'node:crypto';
-import { Op } from 'sequelize';
+import { Op, QueryTypes } from 'sequelize';
 import {
   PutObjectCommand,
   DeleteObjectCommand,
@@ -26,7 +26,7 @@ export const imageUrl = (key) =>
     ? `${env.IMAGE_LOCAL_BASE_URL.replace(/\/$/, '')}/${key}`
     : `https://${IMAGE_BUCKET}.s3.${env.IMAGE_S3_REGION}.amazonaws.com/${key}`;
 export const managedImageKey = (key) =>
-  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
+  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands|banners)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
     key,
   );
 
@@ -56,8 +56,7 @@ export async function queueImageUrlCleanup(value, transaction) {
 export async function isImageReferenced(key, transaction) {
   if (await models.productImage.count({ where: { s3_key: key }, transaction }))
     return true;
-  if (await VariantImage.count({ where: { s3_key: key }, transaction }))
-    return true;
+  if (await VariantImage.count({ where: { s3_key: key }, transaction })) return true;
   const url = imageUrl(key);
   for (const [model, field] of [
     [models.category, 'category_image'],
@@ -77,6 +76,19 @@ export async function isImageReferenced(key, transaction) {
     )
       return true;
   }
+  const banners = await sequelize.query(
+    `SELECT 1 FROM page_banners
+     WHERE image_path = :url OR image_path LIKE :queryUrl OR image_path LIKE :hashUrl
+        OR mobile_image_path = :url OR mobile_image_path LIKE :queryUrl
+        OR mobile_image_path LIKE :hashUrl
+     LIMIT 1`,
+    {
+      replacements: { url, queryUrl: `${url}?%`, hashUrl: `${url}#%` },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  );
+  if (banners.length) return true;
   return false;
 }
 
@@ -106,7 +118,7 @@ export async function queueImageCleanup(key, transaction) {
 // New keys are immutable: replacement never overwrites the currently referenced object.
 export async function reserveImage(resource, resourceId, file) {
   if (
-    !['products', 'categories', 'brands'].includes(resource) ||
+    !['products', 'categories', 'brands', 'banners'].includes(resource) ||
     !/^[1-9][0-9]*$/.test(String(resourceId))
   ) {
     throw new HttpError(400, 'Invalid image resource');
