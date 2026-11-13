@@ -37,10 +37,7 @@ export function normalizePackage(row) {
   )
     throw new HttpError(502, 'Redcliffe returned invalid package data.');
   const offerPricePaise = Math.round(price * 100);
-  const adjustedPricePaise = Math.min(
-    Math.round(mrp * 100),
-    Math.round((offerPricePaise * 10909) / 1000000) * 100,
-  );
+  const adjustedPricePaise = offerPricePaise;
   return {
     id: `redcliffe:${code}`,
     testId: `redcliffe:${code}`,

@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import { HttpError } from '../../shared/errors.js';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../config/logger.js';
+import { safeGatewayResponse, safeGatewayValue } from '../hdfc/diagnostic-log.js';
 
 export const paths = Object.freeze({
   packages: '/api/external/v2/center-package-data/',
@@ -59,9 +60,11 @@ export async function providerRequest(
     providerRequestId: randomUUID(),
     endpoint: path,
     method: body ? 'POST' : 'GET',
+    responseBody: JSON.stringify({ stage: 'started', request: safeGatewayValue({ query, ...(page !== undefined ? { page } : {}), ...(body ? { body } : {}) }) }),
   };
   logger.info(context, 'Third-party request started');
   await recordProviderCall(context);
+  let diagnosticResponse;
   try {
     const response = await fetchImpl(url, {
       method: body ? 'POST' : 'GET',
@@ -81,6 +84,7 @@ export async function providerRequest(
     } catch {
       /* Preserve non-JSON responses too. */
     }
+    diagnosticResponse = data === null ? safeGatewayResponse(responseBody) : safeGatewayValue(data);
     const responseStatus =
       typeof data?.status === 'string' && /^[a-zA-Z _-]{1,40}$/.test(data.status)
         ? data.status
@@ -91,7 +95,7 @@ export async function providerRequest(
         : [];
     await recordProviderCall({
       ...context,
-      responseBody,
+      responseBody: JSON.stringify({ stage: 'completed', request: safeGatewayValue({ query, ...(page !== undefined ? { page } : {}), ...(body ? { body } : {}) }), response: diagnosticResponse }),
       httpStatus: response.status,
       durationMs: Date.now() - started,
       providerStatus: responseStatus,
@@ -125,6 +129,7 @@ export async function providerRequest(
   } catch (error) {
     await recordProviderCall({
       ...context,
+      responseBody: JSON.stringify({ stage: 'failed', request: safeGatewayValue({ query, ...(page !== undefined ? { page } : {}), ...(body ? { body } : {}) }), ...(diagnosticResponse !== undefined ? { response: diagnosticResponse } : {}) }),
       durationMs: Date.now() - started,
       failure:
         error?.name === 'TimeoutError'
