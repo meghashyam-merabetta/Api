@@ -143,6 +143,13 @@ test('image multipart writes require a trusted origin and permit PUT replacement
   for (const [method, url] of [
     ['POST', '/api/admin/products/1/images'],
     ['PUT', '/api/admin/products/1/images/2'],
+    ['POST', '/api/admin/banners/home-offer/image'],
+    ['PUT', '/api/admin/banners/home-offer/image'],
+    ['POST', '/api/admin/banners/home-offer/mobile-image'],
+    ['PUT', '/api/admin/banners/home-offer/mobile-image'],
+    ['POST', '/api/admin/banners/batch'],
+    ['POST', '/api/admin/labs/redcliffe/image'],
+    ['PUT', '/api/admin/labs/redcliffe/image'],
   ]) {
     const request = (origin, type) => ({
       method,

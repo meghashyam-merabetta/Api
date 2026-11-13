@@ -26,7 +26,7 @@ export const imageUrl = (key) =>
     ? `${env.IMAGE_LOCAL_BASE_URL.replace(/\/$/, '')}/${key}`
     : `https://${IMAGE_BUCKET}.s3.${env.IMAGE_S3_REGION}.amazonaws.com/${key}`;
 export const managedImageKey = (key) =>
-  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands|banners)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
+  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands|banners)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp)|labs\/[a-z0-9]+(?:-[a-z0-9]+)*\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
     key,
   );
 
@@ -61,6 +61,7 @@ export async function isImageReferenced(key, transaction) {
   for (const [model, field] of [
     [models.category, 'category_image'],
     [models.brand, 'image_url'],
+    [models.lab, 'image'],
   ]) {
     if (
       await model.count({
@@ -117,9 +118,13 @@ export async function queueImageCleanup(key, transaction) {
 // A committed journal exists before S3 is touched. A crash/rollback leaves retryable cleanup.
 // New keys are immutable: replacement never overwrites the currently referenced object.
 export async function reserveImage(resource, resourceId, file) {
+  const validResourceId =
+    resource === 'labs'
+      ? /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(String(resourceId))
+      : /^[1-9][0-9]*$/.test(String(resourceId));
   if (
-    !['products', 'categories', 'brands', 'banners'].includes(resource) ||
-    !/^[1-9][0-9]*$/.test(String(resourceId))
+    !['products', 'categories', 'brands', 'banners', 'labs'].includes(resource) ||
+    !validResourceId
   ) {
     throw new HttpError(400, 'Invalid image resource');
   }

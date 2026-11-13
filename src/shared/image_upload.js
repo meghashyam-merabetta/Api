@@ -15,10 +15,11 @@ export function createImageUpload({
   maxFiles = 1,
   maxFileBytes = MAX_IMAGE_FILE_BYTES,
   maxTotalBytes = maxFileBytes,
+  maxFields = 0,
 } = {}) {
   const parse = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxFileBytes, files: maxFiles, fields: 0 },
+    limits: { fileSize: maxFileBytes, files: maxFiles, fields: maxFields },
     fileFilter: (_req, file, callback) => {
       if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
         callback(null, true);

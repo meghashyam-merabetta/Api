@@ -93,11 +93,13 @@ test('resource policies enforce one or ten files, per-file sizes and aggregate b
 
 test('URL cleanup accepts only managed keys in the configured image bucket', () => {
   const uuid = '12345678-1234-1234-1234-123456789abc';
-  for (const resource of ['products', 'categories', 'brands']) {
+  for (const resource of ['products', 'categories', 'brands', 'banners']) {
     const key = `upload/${resource}/7/${uuid}.png`;
     assert.equal(managedImageKeyFromUrl(imageUrl(key)), key);
     assert.equal(managedImageKeyFromUrl(`${imageUrl(key)}?v=1`), key);
   }
+  const labKey = `upload/labs/redcliffe/${uuid}.png`;
+  assert.equal(managedImageKeyFromUrl(imageUrl(labKey)), labKey);
   assert.equal(managedImageKeyFromUrl(imageUrl('upload/7j.jpg')), 'upload/7j.jpg');
   for (const url of [
     'https://outside.example/upload/7j.jpg',

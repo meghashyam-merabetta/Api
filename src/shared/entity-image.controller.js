@@ -19,6 +19,7 @@ export function createEntityImageControllers({
   idField,
   imageField,
   label,
+  responseField = 'image_url',
 }) {
   const multipart = createImageUpload();
   const parse = (req, res) =>
@@ -33,7 +34,10 @@ export function createEntityImageControllers({
     if (!row) throw new HttpError(404, `${label} not found`);
     return row;
   }
-  const view = (row) => ({ [idField]: row[idField], image_url: row[imageField] ?? null });
+  const view = (row) => ({
+    [idField]: row[idField],
+    [responseField]: row[imageField] ?? null,
+  });
   const upload = async (req, res) => {
     await parse(req, res);
     const id = req.validatedParams[idParam];

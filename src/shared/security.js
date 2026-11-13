@@ -48,6 +48,7 @@ export function csrfGuard(req, res, next) {
   }
   // Image uploads and replacements use multipart bodies after the Origin check.
   const imageMultipart =
+    (req.method === 'POST' && req.path === '/api/admin/banners/batch') ||
     (req.method === 'POST' &&
       /^\/api\/admin\/products\/[^/]+\/variants\/[^/]+\/images$/.test(req.path)) ||
     (req.method === 'PUT' &&
@@ -56,7 +57,7 @@ export function csrfGuard(req, res, next) {
     (req.method === 'PUT' &&
       /^\/api\/admin\/products\/[^/]+\/images\/[^/]+$/.test(req.path)) ||
     (['POST', 'PUT'].includes(req.method) &&
-      /^\/api\/admin\/(?:categories|brands)\/[^/]+\/image$/.test(req.path)) ||
+      /^\/api\/admin\/(?:categories|brands|labs)\/[^/]+\/image$/.test(req.path)) ||
     (['POST', 'PUT'].includes(req.method) &&
       /^\/api\/admin\/banners\/[^/]+\/(?:image|mobile-image)$/.test(req.path));
   if (imageMultipart) {

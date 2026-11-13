@@ -1,7 +1,8 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
-import { createImageUpload } from '../../shared/image_upload.js';
+import { createImageUpload, MAX_IMAGE_BATCH_BYTES } from '../../shared/image_upload.js';
+import { batchBannerMetadataSchema } from './banners.schema.js';
 import {
   finishImageCleanup,
   imageUrl,
@@ -33,6 +34,44 @@ function buildUpdate(values) {
       keys.map((key, index) => [`value${index}`, values[key]]),
     ),
   };
+}
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function nextBannerKey(baseKey, existingKeys) {
+  if (!existingKeys.includes(baseKey)) return baseKey;
+  const suffixPattern = new RegExp(`^${escapeRegExp(baseKey)}-(\\d+)$`);
+  const highest = existingKeys.reduce((maximum, key) => {
+    const match = suffixPattern.exec(key);
+    return match ? Math.max(maximum, Number(match[1])) : maximum;
+  }, 1);
+  const next = `${baseKey}-${String(highest + 1).padStart(2, '0')}`;
+  if (next.length > 100)
+    throw new HttpError(422, 'Banner placement key is too long to add another banner');
+  return next;
+}
+
+async function allocateBannerKey(baseKey, transaction) {
+  // Serialize allocation per placement so concurrent admins cannot receive the same suffix.
+  await sequelize.query('SELECT pg_advisory_xact_lock(hashtextextended(:baseKey, 0))', {
+    replacements: { baseKey },
+    type: QueryTypes.SELECT,
+    transaction,
+  });
+  const prefix = `${baseKey}-`;
+  const rows = await sequelize.query(
+    `SELECT banner_key FROM page_banners
+     WHERE banner_key = :baseKey OR left(banner_key, length(:prefix)) = :prefix`,
+    {
+      replacements: { baseKey, prefix },
+      type: QueryTypes.SELECT,
+      transaction,
+    },
+  );
+  return nextBannerKey(
+    baseKey,
+    rows.map((row) => row.banner_key),
+  );
 }
 
 export async function listBanners(req, res) {
@@ -85,24 +124,112 @@ export async function getBanner(req, res) {
 }
 
 export async function createBanner(req, res) {
-  const values = req.validated;
-  const keys = Object.keys(values);
-  const replacements = Object.fromEntries(
-    keys.map((key, index) => [`value${index}`, values[key]]),
-  );
   try {
-    const result = await sequelize.query(
-      `INSERT INTO page_banners (banner_id, ${keys.map((key) => `"${key}"`).join(', ')})
-       VALUES (nextval('page_banners_banner_id_seq'), ${keys.map((_key, index) => `:value${index}`).join(', ')})
-       RETURNING ${columns}`,
-      { replacements, type: QueryTypes.INSERT },
-    );
-    res.status(201).json({ data: result[0][0] });
+    const row = await sequelize.transaction(async (transaction) => {
+      const values = {
+        ...req.validated,
+        banner_key: await allocateBannerKey(req.validated.banner_key, transaction),
+      };
+      const keys = Object.keys(values);
+      const replacements = Object.fromEntries(
+        keys.map((key, index) => [`value${index}`, values[key]]),
+      );
+      const result = await sequelize.query(
+        `INSERT INTO page_banners (banner_id, ${keys.map((key) => `"${key}"`).join(', ')})
+         VALUES (nextval('page_banners_banner_id_seq'), ${keys.map((_key, index) => `:value${index}`).join(', ')})
+         RETURNING ${columns}`,
+        { replacements, type: QueryTypes.INSERT, transaction },
+      );
+      return result[0][0];
+    });
+    res.status(201).json({ data: row });
   } catch (error) {
     if (error?.original?.code === '23505')
       throw new HttpError(409, 'Banner key already exists');
     throw error;
   }
+}
+
+const batchMultipart = createImageUpload({
+  maxFiles: 10,
+  maxTotalBytes: MAX_IMAGE_BATCH_BYTES,
+  maxFields: 1,
+});
+const parseBatchImages = (req, res) =>
+  new Promise((resolve, reject) =>
+    batchMultipart(req, res, (error) => (error ? reject(error) : resolve())),
+  );
+
+export async function createBannerBatch(req, res) {
+  await parseBatchImages(req, res);
+  let metadata;
+  try {
+    metadata = batchBannerMetadataSchema.parse(JSON.parse(req.body.metadata ?? ''));
+  } catch (error) {
+    if (error instanceof SyntaxError)
+      throw new HttpError(422, 'metadata must be valid JSON');
+    throw error;
+  }
+  const files = req.files ?? [];
+  if (metadata.images.length !== files.length)
+    throw new HttpError(
+      422,
+      'metadata.images must contain one dimensions entry per image',
+    );
+
+  // Reserve IDs and durable cleanup journals before the row transaction. If any later
+  // operation fails, the cleanup worker safely removes every unreferenced staged object.
+  const reserved = [];
+  for (const file of files) {
+    const ids = await sequelize.query(
+      `SELECT nextval('page_banners_banner_id_seq')::bigint AS banner_id`,
+      { type: QueryTypes.SELECT },
+    );
+    const bannerId = ids[0].banner_id;
+    reserved.push({
+      bannerId,
+      file,
+      key: await reserveImage('banners', bannerId, file),
+    });
+  }
+
+  const rows = await sequelize.transaction(async (transaction) => {
+    const created = [];
+    for (let index = 0; index < reserved.length; index++) {
+      const item = reserved[index];
+      const bannerKey = await allocateBannerKey(metadata.banner_key, transaction);
+      const staged = await stageImage(item.key, item.file, transaction);
+      const dimensions = metadata.images[index];
+      const result = await sequelize.query(
+        `INSERT INTO page_banners (
+           banner_id, banner_key, page_name, banner_name, image_path,
+           width_px, height_px, is_active, banner_type, status
+         ) VALUES (
+           :bannerId, :bannerKey, :pageName, :bannerName, :imagePath,
+           :width, :height, :active, 'WEBSITE', :status
+         ) RETURNING ${columns}`,
+        {
+          replacements: {
+            bannerId: item.bannerId,
+            bannerKey,
+            pageName: metadata.page_name,
+            bannerName: metadata.banner_name,
+            imagePath: imageUrl(staged.key),
+            width: dimensions.width_px,
+            height: dimensions.height_px,
+            active: metadata.is_active,
+            status: metadata.is_active ? 'ACTIVE' : 'INACTIVE',
+          },
+          type: QueryTypes.INSERT,
+          transaction,
+        },
+      );
+      await staged.journal.destroy({ transaction });
+      created.push(result[0][0]);
+    }
+    return created;
+  });
+  res.status(201).json({ data: rows });
 }
 
 export async function updateBanner(req, res) {

@@ -1,5 +1,6 @@
 import {
   createBanner,
+  createBannerBatch,
   deleteBanner,
   deleteBannerMobileImage,
   getBanner,
@@ -16,6 +17,7 @@ import {
 } from './banners.schema.js';
 
 export const bannerRoutes = [
+  { method: 'post', path: '/batch', handler: createBannerBatch },
   { method: 'get', path: '/', query: listBannersQuerySchema, handler: listBanners },
   { method: 'post', path: '/', schema: createBannerSchema, handler: createBanner },
   {

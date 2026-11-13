@@ -50,6 +50,25 @@ export const updateBannerSchema = z
     path: ['publish_end_at'],
   });
 export const bannerKeyParamsSchema = z.object({ bannerKey }).strict();
+export const batchBannerMetadataSchema = z
+  .object({
+    banner_key: bannerKey,
+    page_name: z.string().trim().min(1).max(100),
+    banner_name: z.string().trim().min(1).max(150),
+    is_active: z.boolean().default(true),
+    images: z
+      .array(
+        z
+          .object({
+            width_px: z.coerce.number().int().min(1).max(10000),
+            height_px: z.coerce.number().int().min(1).max(10000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+  })
+  .strict();
 export const listBannersQuerySchema = z
   .object({
     status: z.enum(['DRAFT', 'ACTIVE', 'INACTIVE']).optional(),
