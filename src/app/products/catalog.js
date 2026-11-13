@@ -1,5 +1,5 @@
 import { QueryTypes } from 'sequelize';
-import { sequelize } from '../../config/database.js';
+import { sequelize as database } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
 import { env } from '../../config/env.js';
 export function productImageUrl(path) {
@@ -52,15 +52,15 @@ export function publicProductAttributes(specifications, product = {}, details = 
 }
 
 export async function productCatalog(transaction) {
-  const categories = await sequelize.query(
+  const categories = await database.query(
     'SELECT id::text,name,slug,parent_id::text AS "parentId",sort_order AS "sortOrder",description,image_url AS image FROM categories WHERE is_active ORDER BY sort_order,id',
     { type: QueryTypes.SELECT, transaction },
   );
-  const brands = await sequelize.query(
+  const brands = await database.query(
     'SELECT id::text,name,slug,logo_url AS logo,description FROM brands WHERE is_active ORDER BY name,id',
     { type: QueryTypes.SELECT, transaction },
   );
-  const rows = await sequelize.query(
+  const rows = await database.query(
     `SELECT p.id::text AS product_id,p.product_name AS name,d.full_description AS description,d.short_description,
     p.brand_id::text,b.name AS brand_name,p.sku,d.specifications AS attributes, to_jsonb(p) AS product_fields, to_jsonb(d) AS detail_fields,
     p.selling_price,p.mrp,
