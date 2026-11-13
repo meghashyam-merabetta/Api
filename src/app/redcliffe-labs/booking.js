@@ -58,7 +58,6 @@ export function bookingPayload(
     booking_date: todayInIndia(),
     collection_date: date,
     collection_slot: Number(slotId),
-    booking_type: 'Homedx',
     // Use this booking's stable UUID for both provider references. Retries of
     // the same local booking reuse it; a new booking always receives a new one.
     client_refid: reference,
