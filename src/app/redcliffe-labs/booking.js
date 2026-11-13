@@ -59,7 +59,9 @@ export function bookingPayload(
     collection_date: date,
     collection_slot: Number(slotId),
     booking_type: 'Homedx',
-    client_refid: customer.id,
+    // Use this booking's stable UUID for both provider references. Retries of
+    // the same local booking reuse it; a new booking always receives a new one.
+    client_refid: reference,
     reference_data: reference,
     package_code: codes,
     customer_name: member.name.trim(),
