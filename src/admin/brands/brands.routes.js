@@ -1,0 +1,82 @@
+import {
+  listBrands,
+  getBrand,
+  createBrand,
+  updateBrand,
+  deleteBrand,
+  getBrandImage,
+  uploadBrandImage,
+  deleteBrandImage,
+} from './brands.controller.js';
+import {
+  createBrandSchema,
+  updateBrandSchema,
+  brandIdParamsSchema,
+  listBrandsQuerySchema,
+} from './brands.schema.js';
+export const brandsRoutes = [
+  {
+    method: 'get',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: getBrandImage,
+  },
+  {
+    method: 'post',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: uploadBrandImage,
+  },
+  {
+    method: 'put',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: uploadBrandImage,
+  },
+  {
+    method: 'delete',
+    path: '/:brandId/image',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: deleteBrandImage,
+  },
+  {
+    method: 'get',
+    path: '/',
+    query: listBrandsQuerySchema,
+    auth: true,
+    handler: listBrands,
+  },
+  {
+    method: 'get',
+    path: '/:brandId',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: getBrand,
+  },
+  {
+    method: 'post',
+    path: '/',
+    auth: true,
+    schema: createBrandSchema,
+    handler: createBrand,
+  },
+  {
+    method: 'patch',
+    path: '/:brandId',
+    params: brandIdParamsSchema,
+    auth: true,
+    schema: updateBrandSchema,
+    handler: updateBrand,
+  },
+  {
+    method: 'delete',
+    path: '/:brandId',
+    params: brandIdParamsSchema,
+    auth: true,
+    handler: deleteBrand,
+  },
+];

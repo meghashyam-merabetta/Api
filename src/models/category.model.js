@@ -1,10 +1,11 @@
-
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
 
 export const Category = sequelize.define(
   'Category',
   {
+    created_by: { type: DataTypes.UUID, allowNull: true },
+    updated_by: { type: DataTypes.UUID, allowNull: true },
     category_id: {
       type: DataTypes.BIGINT,
       field: 'id',
@@ -55,3 +56,10 @@ export const Category = sequelize.define(
     updatedAt: 'updated_at',
   },
 );
+
+// Keep the API alias out of Sequelize's attribute map: a VIRTUAL image_url
+// collides with category_image's physical column and can drop bulk-insert images.
+Category.prototype.toJSON = function () {
+  const values = this.get({ plain: true });
+  return { ...values, image_url: values.category_image ?? null };
+};

@@ -1,5 +1,9 @@
 import { sequelize } from '../src/config/database.js';
 import { models } from '../src/models/index.js';
+import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_CMS_ADMIN_PERMISSIONS,
+} from '../src/admin/permissions.js';
 
 if (!process.env.ADMIN_EMAIL) throw new Error('ADMIN_EMAIL is required');
 
@@ -15,9 +19,15 @@ try {
     defaults: { permissions: [] },
   });
 
-  profile.permissions = ['admin.manage'];
+  profile.permissions = [
+    ...new Set([
+      ...(Array.isArray(profile.permissions) ? profile.permissions : []),
+      ADMIN_PERMISSIONS.manage,
+      ...DEFAULT_CMS_ADMIN_PERMISSIONS,
+    ]),
+  ];
   await profile.save();
-  console.log(`Granted admin.manage to ${user.email}`);
+  console.log(`Granted CMS admin permissions to ${user.email}`);
 } finally {
   await sequelize.close();
 }

@@ -1,6 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { sequelize } from '../src/config/database.js';
 import { models } from '../src/models/index.js';
+import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_CMS_ADMIN_PERMISSIONS,
+} from '../src/admin/permissions.js';
 
 const required = ['ADMIN_NAME', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'];
 for (const key of required) {
@@ -36,7 +40,10 @@ try {
         pincode: process.env.ADMIN_PINCODE?.trim() || null,
         state: process.env.ADMIN_STATE?.trim() || null,
         requireSuperAdminApproval: false,
-        permissions: ['admin.manage'],
+        permissions: [
+          ADMIN_PERMISSIONS.manage,
+          ...DEFAULT_CMS_ADMIN_PERMISSIONS,
+        ],
       },
       { transaction },
     );
