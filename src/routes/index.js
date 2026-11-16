@@ -31,6 +31,7 @@ import { getSettings, updateSettings, settingsSchema } from '../app/pricing/sett
 import { bannerRoutes as adminBanners } from '../admin/banners/banners.routes.js';
 import { couponRoutes as adminCoupons } from '../admin/coupons/coupons.routes.js';
 import { labsRoutes as adminLabs } from '../admin/labs/labs.routes.js';
+import { enrollmentsRoutes as adminEnrollments } from '../admin/enrollments/enrollments.routes.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
@@ -105,6 +106,7 @@ const modules = [
   { path: '/admin/banners', realm: 'admin', routes: adminBanners },
   { path: '/admin/coupons', realm: 'admin', routes: adminCoupons },
   { path: '/admin/labs', realm: 'admin', routes: adminLabs },
+  { path: '/admin/enrollments', realm: 'admin', routes: adminEnrollments },
 ];
 
 const authentication = { app: authenticateCustomer, admin: adminAuth.authenticate };
