@@ -32,6 +32,7 @@ import { bannerRoutes as adminBanners } from '../admin/banners/banners.routes.js
 import { couponRoutes as adminCoupons } from '../admin/coupons/coupons.routes.js';
 import { labsRoutes as adminLabs } from '../admin/labs/labs.routes.js';
 import { enrollmentsRoutes as adminEnrollments } from '../admin/enrollments/enrollments.routes.js';
+import { appEnrollmentsRoutes } from '../app/enrollments/enrollments.routes.js';
 
 // Register new modules here. Realm chooses authentication centrally.
 const modules = [
@@ -96,6 +97,7 @@ const modules = [
   { path: '/app/cart', realm: 'app', routes: cartRoutes },
   { path: '/app/wishlist', realm: 'app', routes: wishlistRoutes },
   { path: '/app', realm: 'app', routes: masterRoutes },
+  { path: '/app/enrollments', realm: 'app', routes: appEnrollmentsRoutes },
   { path: '/admin/auth', realm: 'admin', routes: adminAuthRoutes },
   { path: '/admin/brands', realm: 'admin', routes: brandsRoutes },
   { path: '/admin/variant-attributes', realm: 'admin', routes: variantAttributeRoutes },
