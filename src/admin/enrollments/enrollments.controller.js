@@ -1,6 +1,15 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../../config/database.js';
 import { HttpError } from '../../shared/errors.js';
+import { ProductImageCleanup } from '../../models/catalog-reliability.model.js';
+import { verifyEnrollmentReceipts } from '../../app/enrollments/enrollment-chunks.js';
+import {
+  finishImageCleanup,
+  imageStorageScope,
+  imageUrl,
+  managedImageKeyFromUrl,
+  queueImageUrlCleanup,
+} from '../../shared/image-storage.js';
 
 function serializeEnrollmentSummary(row) {
   return {
@@ -109,7 +118,9 @@ export async function listEnrollments(req, res) {
 
   if (cursor) {
     const decoded = decodeCursor(cursor);
-    conditions.push('(a.submission_date, a.id) < (CAST(:cursorDate AS date), CAST(:cursorId AS uuid))');
+    conditions.push(
+      '(a.submission_date, a.id) < (CAST(:cursorDate AS date), CAST(:cursorId AS uuid))',
+    );
     replacements.cursorDate = decoded.submissionDate;
     replacements.cursorId = decoded.id;
   }
@@ -124,7 +135,6 @@ export async function listEnrollments(req, res) {
      LIMIT :limit`,
     { replacements, type: QueryTypes.SELECT },
   );
-
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, limit) : rows;
   const nextCursor = hasMore ? encodeCursor(items[items.length - 1]) : null;
@@ -357,4 +367,164 @@ export async function restoreEnrollment(req, res) {
   });
 
   res.json({ id, status: 'INACTIVE', restored: true });
+}
+
+const mediaFields = {
+  facilityPhotographs: {
+    table: 'oldagehome.poc_client',
+    column: 'facility_photographs',
+    row: 'facility_photographs',
+    array: true,
+    max: 10,
+  },
+  facilityVideo: {
+    table: 'oldagehome.poc_client',
+    column: 'facility_video',
+    row: 'facility_video',
+  },
+  registrationCertificate: {
+    table: 'oldagehome.poc_admin',
+    column: 'registration_certificate',
+    row: 'registration_certificate',
+  },
+  panCard: { table: 'oldagehome.poc_admin', column: 'pan_card', row: 'pan_card' },
+  gstCertificate: {
+    table: 'oldagehome.poc_admin',
+    column: 'gst_certificate',
+    row: 'gst_certificate',
+  },
+  addressProof: {
+    table: 'oldagehome.poc_admin',
+    column: 'address_proof',
+    row: 'address_proof',
+  },
+  representativeIdProof: {
+    table: 'oldagehome.poc_admin',
+    column: 'representative_id_proof',
+    row: 'representative_id_proof',
+  },
+  bankAccountDetails: {
+    table: 'oldagehome.poc_admin',
+    column: 'bank_account_details',
+    row: 'bank_account_details',
+  },
+  licensesCertificates: {
+    table: 'oldagehome.poc_admin',
+    column: 'licenses_certificates',
+    row: 'licenses_certificates',
+    array: true,
+    max: 10,
+  },
+  digitalSignature: {
+    table: 'oldagehome.poc_admin',
+    column: 'digital_signature',
+    row: 'digital_signature',
+  },
+};
+
+// PUT /api/admin/enrollments/:id/media
+export async function updateEnrollmentMedia(req, res) {
+  const { id } = req.validatedParams;
+  const { receipts, retain, clearFields } = req.validated;
+  const { grouped } = receipts.length
+    ? await verifyEnrollmentReceipts(receipts, { requireCompleteEnrollment: false })
+    : { grouped: {} };
+  const changedFields = new Set([
+    ...Object.keys(grouped),
+    ...Object.keys(retain),
+    ...clearFields,
+  ]);
+  const cleanupKeys = [];
+  const result = await sequelize.transaction(async (transaction) => {
+    const [current] = await sequelize.query(
+      `SELECT c.facility_photographs, c.facility_video,
+              a.registration_certificate, a.pan_card, a.gst_certificate,
+              a.address_proof, a.representative_id_proof,
+              a.bank_account_details, a.licenses_certificates,
+              a.digital_signature
+       FROM oldagehome.poc_admin a
+       JOIN oldagehome.poc_client c ON c.id = a.id
+       WHERE a.id = :id AND a.deleted_at IS NULL
+       FOR UPDATE OF a, c`,
+      { replacements: { id }, type: QueryTypes.SELECT, transaction },
+    );
+    if (!current) throw new HttpError(404, 'Enrollment not found');
+
+    for (const files of Object.values(grouped)) {
+      for (const { key } of files) {
+        const journal = await ProductImageCleanup.findByPk(key, {
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!journal || journal.storage_scope !== imageStorageScope)
+          throw new HttpError(409, 'An uploaded file expired; upload it again');
+        await journal.destroy({ transaction });
+      }
+    }
+
+    const response = {};
+    for (const field of changedFields) {
+      const definition = mediaFields[field];
+      const oldValues = definition.array
+        ? (current[definition.row] ?? [])
+        : current[definition.row]
+          ? [current[definition.row]]
+          : [];
+      const newUrls = (grouped[field] ?? []).map(({ key }) => imageUrl(key));
+      let next;
+      if (definition.array) {
+        let kept = clearFields.includes(field) ? [] : oldValues;
+        if (Object.hasOwn(retain, field)) {
+          if (retain[field].some((url) => !oldValues.includes(url)))
+            throw new HttpError(400, `${field} retain contains an unknown URL`);
+          kept = retain[field];
+        }
+        next = [...new Set([...kept, ...newUrls])];
+        if (next.length > definition.max)
+          throw new HttpError(
+            400,
+            `${field} can contain at most ${definition.max} files`,
+          );
+        await sequelize.query(
+          `UPDATE ${definition.table}
+           SET ${definition.column} = ARRAY(
+             SELECT jsonb_array_elements_text(CAST(:value AS jsonb))
+           )${definition.table.endsWith('poc_admin') ? ', updated_at = now(), updated_by = :admin' : ''}
+           WHERE id = :id`,
+          {
+            replacements: {
+              id,
+              value: JSON.stringify(next),
+              admin: req.user.email,
+            },
+            transaction,
+          },
+        );
+        response[field] = next;
+      } else {
+        if (newUrls.length > 1)
+          throw new HttpError(400, `${field} accepts only one file`);
+        next = newUrls[0] ?? (clearFields.includes(field) ? null : oldValues[0]);
+        await sequelize.query(
+          `UPDATE ${definition.table}
+           SET ${definition.column} = :value${definition.table.endsWith('poc_admin') ? ', updated_at = now(), updated_by = :admin' : ''}
+           WHERE id = :id`,
+          {
+            replacements: { id, value: next ?? null, admin: req.user.email },
+            transaction,
+          },
+        );
+        response[field] = next ?? null;
+      }
+      const retained = definition.array ? next : next ? [next] : [];
+      for (const oldUrl of oldValues.filter((url) => !retained.includes(url))) {
+        const key = managedImageKeyFromUrl(oldUrl);
+        if (key) cleanupKeys.push(key);
+        await queueImageUrlCleanup(oldUrl, transaction);
+      }
+    }
+    return response;
+  });
+  await finishImageCleanup(cleanupKeys);
+  res.json({ id, updated: true, media: result });
 }

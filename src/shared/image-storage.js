@@ -26,7 +26,7 @@ export const imageUrl = (key) =>
     ? `${env.IMAGE_LOCAL_BASE_URL.replace(/\/$/, '')}/${key}`
     : `https://${IMAGE_BUCKET}.s3.${env.IMAGE_S3_REGION}.amazonaws.com/${key}`;
 export const managedImageKey = (key) =>
-  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands|banners)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp)|labs\/[a-z0-9]+(?:-[a-z0-9]+)*\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
+  /^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands|banners)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp)|labs\/[a-z0-9]+(?:-[a-z0-9]+)*\/[0-9a-f-]{36}\.(?:jpg|png|webp)|enrollments\/[0-9a-f-]{36}\/[A-Za-z]+\/[0-9a-f-]{36}\.(?:jpg|png|webp|pdf|doc|docx|mp4))$/.test(
     key,
   );
 
@@ -54,6 +54,24 @@ export async function queueImageUrlCleanup(value, transaction) {
 }
 
 export async function isImageReferenced(key, transaction) {
+  if (key.startsWith('upload/enrollments/')) {
+    const url = imageUrl(key);
+    const rows = await sequelize.query(
+      `SELECT 1
+       FROM oldagehome.poc_admin a
+       JOIN oldagehome.poc_client c ON c.id = a.id
+       WHERE :url = ANY(COALESCE(c.facility_photographs, ARRAY[]::text[]))
+          OR c.facility_video = :url
+          OR a.registration_certificate = :url OR a.pan_card = :url
+          OR a.gst_certificate = :url OR a.address_proof = :url
+          OR a.representative_id_proof = :url OR a.bank_account_details = :url
+          OR :url = ANY(COALESCE(a.licenses_certificates, ARRAY[]::text[]))
+          OR a.digital_signature = :url
+       LIMIT 1`,
+      { replacements: { url }, type: QueryTypes.SELECT, transaction },
+    );
+    return rows.length > 0;
+  }
   if (await models.productImage.count({ where: { s3_key: key }, transaction }))
     return true;
   if (await VariantImage.count({ where: { s3_key: key }, transaction })) return true;

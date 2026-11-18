@@ -21,8 +21,14 @@ export const updateEnrollmentStatusSchema = z.object({
 
 // 4. Shared helpers for poc_client & poc_admin
 const nonEmptyText = (max = 200) => z.string().trim().min(1).max(max);
-const phone10 = z.string().trim().regex(/^\d{10}$/, 'Must be exactly 10 digits');
-const pinCode6 = z.string().trim().regex(/^\d{6}$/, 'Must be exactly 6 digits');
+const phone10 = z
+  .string()
+  .trim()
+  .regex(/^\d{10}$/, 'Must be exactly 10 digits');
+const pinCode6 = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'Must be exactly 6 digits');
 
 const httpUrl = z
   .url()
@@ -102,7 +108,11 @@ export const enrollmentBodySchema = z.object({
     })
     .superRefine((val, ctx) => {
       for (const [service, enabled] of Object.entries(val.servicesOffered)) {
-        if (service !== 'otherDetails' && enabled === true && !val.facilityPricing[service]) {
+        if (
+          service !== 'otherDetails' &&
+          enabled === true &&
+          !val.facilityPricing[service]
+        ) {
           ctx.addIssue({
             code: 'custom',
             path: ['facilityPricing', service],
@@ -133,3 +143,102 @@ export const enrollmentBodySchema = z.object({
     digitalSignature: nonEmptyText(1000),
   }),
 });
+
+// Multipart submission carries these values as files instead of untrusted URLs.
+export const enrollmentMultipartBodySchema = enrollmentBodySchema.extend({
+  poc_client: enrollmentBodySchema.shape.poc_client.safeExtend({
+    facilityPhotographs: z.array(nonEmptyText(1000)).max(10).optional().default([]),
+    facilityVideo: nonEmptyText(1000).nullable().optional(),
+  }),
+  poc_admin: enrollmentBodySchema.shape.poc_admin.extend({
+    registrationCertificate: nonEmptyText(1000).optional(),
+    panCard: nonEmptyText(1000).optional(),
+    gstCertificate: nonEmptyText(1000).nullable().optional(),
+    addressProof: nonEmptyText(1000).optional(),
+    representativeIdProof: nonEmptyText(1000).optional(),
+    bankAccountDetails: nonEmptyText(1000).optional(),
+    licensesCertificates: z.array(nonEmptyText(1000)).optional(),
+    digitalSignature: z.string().optional(),
+  }),
+});
+
+export const enrollmentChunkInitiateSchema = z.object({
+  sessionToken: nonEmptyText(4000),
+  field: z.enum([
+    'facilityPhotographs',
+    'facilityVideo',
+    'registrationCertificate',
+    'panCard',
+    'gstCertificate',
+    'addressProof',
+    'representativeIdProof',
+    'bankAccountDetails',
+    'licensesCertificates',
+    'digitalSignature',
+  ]),
+  fileName: nonEmptyText(255),
+  contentType: nonEmptyText(200),
+  size: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(500 * 1024 * 1024),
+});
+
+export const enrollmentPartUrlSchema = z.object({
+  fileToken: nonEmptyText(8000),
+  partNumber: z.coerce.number().int().min(1).max(10000),
+});
+
+export const enrollmentCompleteUploadSchema = z.object({
+  fileToken: nonEmptyText(8000),
+  parts: z
+    .array(
+      z.object({
+        partNumber: z.coerce.number().int().min(1).max(10000),
+        etag: nonEmptyText(500),
+      }),
+    )
+    .min(1)
+    .max(10000),
+});
+
+export const enrollmentAbortUploadSchema = z.object({
+  fileToken: nonEmptyText(8000),
+});
+
+export const enrollmentChunkedSubmissionSchema = z.object({
+  payload: enrollmentMultipartBodySchema,
+  receipts: z.array(nonEmptyText(8000)).min(6).max(29),
+});
+
+export const enrollmentMediaUpdateSchema = z
+  .object({
+    receipts: z.array(nonEmptyText(8000)).max(29).optional().default([]),
+    retain: z
+      .object({
+        facilityPhotographs: z.array(nonEmptyText(2000)).max(10).optional(),
+        licensesCertificates: z.array(nonEmptyText(2000)).max(10).optional(),
+      })
+      .optional()
+      .default({}),
+    clearFields: z
+      .array(
+        z.enum([
+          'facilityPhotographs',
+          'facilityVideo',
+          'gstCertificate',
+          'licensesCertificates',
+        ]),
+      )
+      .max(4)
+      .optional()
+      .default([]),
+  })
+  .refine(
+    (value) =>
+      value.receipts.length ||
+      value.clearFields.length ||
+      Object.keys(value.retain).length,
+    'Provide receipts, retained media, or fields to clear',
+  );

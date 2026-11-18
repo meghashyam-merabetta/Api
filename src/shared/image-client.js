@@ -11,7 +11,7 @@ export function createLocalImageClient(directory) {
   const root = path.resolve(directory);
   const filename = (key) => {
     if (
-      !/^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp))$/.test(
+      !/^upload\/(?:[0-9]+[a-j]\.(?:jpg|png|webp)|(?:products|categories|brands)\/[0-9]+\/[0-9a-f-]{36}\.(?:jpg|png|webp)|enrollments\/[0-9a-f-]{36}\/[A-Za-z]+\/[0-9a-f-]{36}\.(?:jpg|png|webp|pdf|doc|docx|mp4))$/.test(
         key,
       )
     )

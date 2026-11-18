@@ -4,18 +4,37 @@ import {
   listEnrollments,
   restoreEnrollment,
   updateEnrollment,
+  updateEnrollmentMedia,
   updateEnrollmentStatus,
 } from './enrollments.controller.js';
 import {
   enrollmentBodySchema,
   enrollmentIdParamsSchema,
+  enrollmentMediaUpdateSchema,
   listEnrollmentsQuerySchema,
   updateEnrollmentStatusSchema,
 } from './enrollments.schema.js';
 
 export const enrollmentsRoutes = [
-  { method: 'get', path: '/', query: listEnrollmentsQuerySchema, handler: listEnrollments },
-  { method: 'get', path: '/:id', params: enrollmentIdParamsSchema, handler: getEnrollment },
+  {
+    method: 'put',
+    path: '/:id/media',
+    params: enrollmentIdParamsSchema,
+    schema: enrollmentMediaUpdateSchema,
+    handler: updateEnrollmentMedia,
+  },
+  {
+    method: 'get',
+    path: '/',
+    query: listEnrollmentsQuerySchema,
+    handler: listEnrollments,
+  },
+  {
+    method: 'get',
+    path: '/:id',
+    params: enrollmentIdParamsSchema,
+    handler: getEnrollment,
+  },
   {
     method: 'patch',
     path: '/:id/status',
@@ -43,4 +62,3 @@ export const enrollmentsRoutes = [
     handler: restoreEnrollment,
   },
 ];
-
