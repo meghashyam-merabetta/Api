@@ -5,6 +5,9 @@ export function receiptHtml(row, { unverified = false, download = false } = {}) 
   const paid = !unverified && row.payment_status === 'CHARGED';
   const failed = !unverified && row.payment_status === 'FAILED';
   const test = row.payload?.paymentEnvironment === 'sandbox' || row.payload?.isTestOrder === true;
+  const returnUrl = row.payload?.gatewayAuthMode === 'basic'
+    ? 'https://merabetta.com/'
+    : 'merabetta://payment-return';
   const title = paid ? 'Payment successful' : failed ? 'Payment unsuccessful' : 'Payment verification pending';
   const amount = (Number(row.amount_paise) / 100).toFixed(2);
   const e = escapeHtml;
@@ -16,6 +19,6 @@ export function receiptHtml(row, { unverified = false, download = false } = {}) 
   ${paid ? `<dt>Receipt number</dt><dd>R${e(row.id)}</dd><dt>Transaction reference</dt><dd>${e(row.transaction_id)}</dd>` : ''}</dl>
   <p>${paid ? (test ? 'Your test payment has been verified successfully.' : 'Your payment has been verified successfully.') : failed ? 'Payment was not successful. Check your order before trying again.' : 'We cannot confirm payment yet. If money was debited, do not pay again until the status is confirmed.'}</p>
   <p class="note">${paid ? 'Payment receipt, not a tax invoice. Save or print this page for your records.' : 'Use Check payment status to obtain the latest verified result.'}</p>
-  ${download ? '' : `<nav><a href="?">Check payment status</a>${paid ? '<a href="?download=1">Download receipt</a>' : ''}<a href="merabetta://payment-return">Return to Merabetta</a></nav>`}
+  ${download ? '' : `<nav><a href="?">Check payment status</a>${paid ? '<a href="?download=1">Download receipt</a>' : ''}<a href="${returnUrl}">Return to Merabetta</a></nav>`}
   <p class="note">Support: +91 89991 88267</p></main></body></html>`;
 }

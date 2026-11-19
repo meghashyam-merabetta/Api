@@ -121,93 +121,21 @@ try {
       { transaction },
     );
   });
-
-  await sequelize.query(
-    readFileSync(
-      new URL('../sql/013-lab-booking-amendment.sql', import.meta.url),
-      'utf8',
-    ),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/014-product-orders.sql', import.meta.url), 'utf8'),
-  );
-
-  for (const product of JSON.parse(
-    readFileSync(new URL('../seed/products.json', import.meta.url), 'utf8'),
-  )) {
-    await sequelize.query(
-      'INSERT INTO product_catalog(id,data) VALUES(:id,CAST(:data AS jsonb)) ON CONFLICT(id) DO NOTHING',
-      {
-        replacements: {
-          id: product.id,
-          data: JSON.stringify(product),
-        },
-      },
-    );
-  }
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/015-stpl-otp.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/016-cart-wishlist.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/018-contact-coupons.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(
-      new URL('../sql/019-provider-response-body.sql', import.meta.url),
-      'utf8',
-    ),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/020-email-verification.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/021-phone-verification.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/023-order-inventory.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(new URL('../sql/024-order-numbers.sql', import.meta.url), 'utf8'),
-  );
-
-  await sequelize.query(
-    readFileSync(
-      new URL('../sql/025-order-display-numbers.sql', import.meta.url),
-      'utf8',
-    ),
-  );
-
-  await sequelize.query(
-    readFileSync(
-      new URL('../sql/031-lab-markup-capped-at-mrp.sql', import.meta.url),
-      'utf8',
-    ),
-  );
-
-  await sequelize.transaction(async (transaction) => {
-    await sequelize.query(
-      readFileSync(
-        new URL('../sql/032-product-payment-checkouts.sql', import.meta.url),
-        'utf8',
-      ),
-      { transaction },
-    );
+  await sequelize.query(readFileSync(new URL('../sql/013-lab-booking-amendment.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/014-product-orders.sql', import.meta.url), 'utf8'));
+  for (const product of JSON.parse(readFileSync(new URL('../seed/products.json', import.meta.url), 'utf8'))) await sequelize.query('INSERT INTO product_catalog(id,data) VALUES(:id,CAST(:data AS jsonb)) ON CONFLICT(id) DO NOTHING', { replacements: {id: product.id, data: JSON.stringify(product)} });
+  await sequelize.query(readFileSync(new URL('../sql/015-stpl-otp.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/016-cart-wishlist.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/018-contact-coupons.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/019-provider-response-body.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/020-email-verification.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/021-phone-verification.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/022-page-banners.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/023-order-inventory.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/024-order-numbers.sql', import.meta.url), 'utf8'));
+  await sequelize.query(readFileSync(new URL('../sql/025-order-display-numbers.sql', import.meta.url), 'utf8'));
+  await sequelize.transaction(async transaction => {
+    await sequelize.query(readFileSync(new URL('../sql/032-product-payment-checkouts.sql', import.meta.url), 'utf8'), { transaction });
   });
 
   await sequelize.transaction(async (transaction) => {
@@ -270,14 +198,11 @@ try {
 
   await sequelize.transaction(async (transaction) => {
     await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
-
-    await sequelize.query(
-      readFileSync(
-        new URL('../sql/040-lab-price-half-up.sql', import.meta.url),
-        'utf8',
-      ),
-      { transaction },
-    );
+    await sequelize.query(readFileSync(new URL('../sql/041-redcliffe-provider-offer-prices.sql', import.meta.url), 'utf8'), { transaction });
+  });
+  await sequelize.transaction(async transaction => {
+    await sequelize.query("SET LOCAL lock_timeout = '10s'", { transaction });
+    await sequelize.query(readFileSync(new URL('../sql/036-random-order-number-width.sql', import.meta.url), 'utf8'), { transaction });
   });
 
   await sequelize.transaction(async (transaction) => {
