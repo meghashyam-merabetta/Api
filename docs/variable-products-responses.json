@@ -1,0 +1,128 @@
+{
+  "note": "Illustrative response excerpts, not database output. Other existing parent fields, details, images and inventory are also returned. IDs and timestamps are examples only.",
+  "post": {
+    "status": 201,
+    "headers": { "Location": "/api/admin/variable-products/42" },
+    "body": {
+      "data": {
+        "id": "42",
+        "product_code": "TEE-COTTON",
+        "product_name": "Cotton tee",
+        "slug": "cotton-tee",
+        "product_type": "variable",
+        "product_status": "draft",
+        "details": {
+          "full_description": "Soft cotton tee",
+          "specifications": { "Material": "Cotton" }
+        },
+        "images": [],
+        "variants": [
+          {
+            "id": "1000000000",
+            "product_id": "42",
+            "sku": "TEE-M-RED",
+            "attributes": { "Size": "M", "Color": "Red" },
+            "variant_name": null,
+            "display_name": "M / Red",
+            "barcode": null,
+            "weight_grams": null,
+            "regular_price": "299.00",
+            "sale_price": "249.00",
+            "stock_quantity": 10,
+            "use_product_images": true,
+            "is_active": true,
+            "created_at": "2026-01-01T00:00:00.000Z",
+            "updated_at": "2026-01-01T00:00:00.000Z",
+            "deleted_at": null
+          },
+          {
+            "id": "1000000001",
+            "product_id": "42",
+            "sku": "TEE-L-RED",
+            "attributes": { "Size": "L", "Color": "Red" },
+            "variant_name": null,
+            "display_name": "L / Red",
+            "barcode": null,
+            "weight_grams": null,
+            "regular_price": "299.00",
+            "sale_price": null,
+            "stock_quantity": 8,
+            "use_product_images": true,
+            "is_active": true,
+            "created_at": "2026-01-01T00:00:00.000Z",
+            "updated_at": "2026-01-01T00:00:00.000Z",
+            "deleted_at": null
+          }
+        ]
+      }
+    }
+  },
+  "get": {
+    "status": 200,
+    "note": "Before PATCH, body is identical to the POST body above; GET preserves IDs and attribute selections. After PATCH it has the updated collection below."
+  },
+  "patch": {
+    "status": 200,
+    "body": {
+      "data": {
+        "id": "42",
+        "product_name": "Cotton tee - expanded sizes",
+        "product_type": "variable",
+        "variants": [
+          {
+            "id": "1000000000",
+            "product_id": "42",
+            "sku": "TEE-M-RED-V2",
+            "attributes": { "Size": "M", "Color": "Red" },
+            "regular_price": "299.00",
+            "sale_price": "229.00",
+            "stock_quantity": 10,
+            "use_product_images": true
+          },
+          {
+            "id": "1000000001",
+            "product_id": "42",
+            "sku": "TEE-L-RED",
+            "attributes": { "Size": "L", "Color": "Red" },
+            "regular_price": "299.00",
+            "sale_price": null,
+            "stock_quantity": 8,
+            "use_product_images": true
+          },
+          {
+            "id": "1000000002",
+            "product_id": "42",
+            "sku": "TEE-XXL-RED",
+            "attributes": { "Size": "XXL", "Color": "Red" },
+            "regular_price": "349.00",
+            "sale_price": "299.00",
+            "stock_quantity": 6,
+            "use_product_images": true
+          }
+        ]
+      }
+    }
+  },
+  "duplicateCombination": {
+    "status": 409,
+    "body": { "error": "Duplicate variant attribute combination" }
+  },
+  "unknownOption": {
+    "status": 422,
+    "body": {
+      "error": "Unknown variant attribute or option; use the variant attribute master"
+    }
+  },
+  "invalidPrice": {
+    "status": 422,
+    "body": {
+      "error": "Validation failed",
+      "details": [
+        {
+          "path": "variants.0.sale_price",
+          "message": "sale_price cannot exceed regular_price"
+        }
+      ]
+    }
+  }
+}

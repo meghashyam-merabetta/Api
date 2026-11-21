@@ -20,6 +20,8 @@ import { wishlistRoutes } from '../app/wishlist/wishlist.routes.js';
 import { masterRoutes } from '../app/masters/master.routes.js';
 import { authRoutes as adminAuthRoutes } from '../admin/auth/auth.routes.js';
 import { productsRoutes as adminProducts } from '../admin/products/products.routes.js';
+import { variableProductRoutes } from '../admin/variable-products/variable-products.routes.js';
+import { variableProductHandlers } from '../admin/variable-products/variable-products.controller.js';
 import { categoriesRoutes as adminCategories } from '../admin/categories/categories.routes.js';
 import { userRoutes as adminUsers } from '../admin/users/users.routes.js';
 import { adminManagementRoutes } from '../admin/management/admin.routes.js';
@@ -99,6 +101,11 @@ const modules = [
   { path: '/admin/brands', realm: 'admin', routes: brandsRoutes },
   { path: '/admin/variant-attributes', realm: 'admin', routes: variantAttributeRoutes },
   { path: '/admin/products', realm: 'admin', routes: adminProducts },
+  {
+    path: '/admin/variable-products',
+    realm: 'admin',
+    routes: variableProductRoutes(variableProductHandlers),
+  },
   { path: '/admin/categories', realm: 'admin', routes: adminCategories },
   { path: '/admin/users', realm: 'admin', routes: adminUsers },
   { path: '/admin/management', realm: 'admin', routes: adminManagementRoutes },
