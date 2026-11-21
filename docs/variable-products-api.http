@@ -1,0 +1,155 @@
+# Merabetta Phase 3: Variable Product backend API
+# Examples only. No requests in this file have been executed against a database.
+# Replace these placeholder origins and IDs in your own authorized environment.
+# Use the existing admin login/session cookie and an allowed CMS Origin.
+# Authentication, CSRF/origin checks and error envelopes are inherited unchanged.
+@baseUrl = https://api.example.invalid
+@cmsOrigin = https://cms.example.invalid
+@productId = 42
+@variantId = 1000000000
+
+# CONTRACT
+# Parent fields use the existing product API's snake_case names and validation.
+# Required on POST: product_code, product_name, slug, and 1-500 variants.
+# product_type is forced to variable; a different type is rejected.
+# details, description, short_description and product_group_code reuse the
+# existing product_details persistence and full-product response helpers.
+# Parent initial_inventory and stock_quantity are rejected on this API.
+# Store per-variant stock_quantity inside variants instead.
+# A request body may be at most 1 MB.
+#
+# Each new variant requires sku, attributes and regular_price.
+# Optional: sale_price (null means no sale), variant_name, barcode, weight_grams,
+# stock_quantity (default 0), use_product_images (default true), is_active (true).
+# Prices are JSON numbers, nonnegative, at most 9999999999.99, at most 2 decimals.
+# sale_price cannot exceed regular_price, including partial PATCH updates.
+# Quantities/weight are integers from 0 to 2147483647; weight may be null.
+# SKU: nonempty, trimmed, maximum 100 characters, case-sensitive uniqueness
+# across public.product_variants, including inactive and deleted rows.
+# Parent product SKUs retain the existing products-table uniqueness rules.
+#
+# attributes is an object of 1-20 exact master names and string options.
+# Names/options must already exist in GET /api/admin/variant-attributes.
+# Size, Color, Weight, Volume and Count are examples; no attribute is hardcoded.
+# Names/options are case-sensitive and must not have surrounding whitespace.
+# Use the existing master APIs to add an option such as XXL before using it.
+# The CMS generates combinations and sends one row per combination in variants;
+# this API does not invent SKUs or expand a Cartesian matrix implicitly.
+# Attribute key order does not distinguish combinations.
+#
+# PATCH: send an id to update a variant; omit id to add one.
+# Variant id and product_id are returned as strings to preserve BIGINT precision.
+# Omitted variants/fields remain unchanged. An attributes object replaces that
+# variant's complete selection; it is not merged one attribute at a time.
+# An id-only entry is allowed. Empty variants arrays are rejected; omit variants
+# for a parent-only edit. At least one field is required on PATCH.
+# An unknown/foreign variant ID is rejected. IDs are never silently reassigned.
+# Neither endpoint deletes variants. Deleted variants are returned by GET,
+# reserve their SKU/combination, and cannot be edited or restored through PATCH.
+# A SKU already held by a different variant cannot be swapped in one request.
+# Unchanged stored attribute values survive unrelated edits if a master changes.
+#
+# GET: returns the full existing product response plus data.variants, sorted by
+# variant ID, including inactive/soft-deleted rows and their original attributes.
+# Parent details/images are included. Variant images are represented by the
+# use_product_images flag; image uploads/galleries are outside this phase.
+# Parent pricing and warehouse inventory fields retain their existing meaning;
+# they are not a sum/minimum derived from variant pricing or stock.
+# Decimal prices in responses are typically strings from PostgreSQL/Sequelize.
+#
+# TRANSACTIONS AND COMPATIBILITY
+# POST/PATCH persist parent, product details, variants and the existing audit
+# entry in one Sequelize transaction. Any failure rolls back all those changes.
+# Writes take SHARE ROW EXCLUSIVE on public.product_variants before checks to
+# serialize writers without assuming Phase 2 has unique SKU/JSONB indexes.
+# This can reduce concurrent variant-write throughput; normal reads can proceed.
+# GET uses a repeatable-read transaction for a consistent parent/variant snapshot.
+# New variant ORM operations explicitly bind schema public. The existing model
+# columns match the supplied Phase 2 table; the identity seed is database-owned.
+# No sync, migrations, table alterations or historical record copies are needed.
+# Legacy model binding and Simple Product handlers retain their prior behavior.
+# No customer catalog publishing or frontend integration is performed here.
+# Live schema, indexes, grants and connectivity have not been verified.
+#
+# ERRORS
+# 401: existing admin authentication failure.
+# 403: existing origin/CSRF rejection.
+# 404: missing or deleted parent product.
+# 409: duplicate SKU/combination/unique parent fields; non-variable parent;
+#      deleted variant edit; concurrent transaction conflict (retry).
+# 422: invalid body/ID, unknown master option/reference, foreign variant ID,
+#      repeated variant ID, invalid prices or database value constraints.
+# 413: request exceeds the JSON body limit.
+# All errors use the existing { "error": "..." } envelope; schema validation
+# also includes details with field paths. Internal SQL is not returned.
+
+### POST: create parent and CMS-generated variants (201 Created)
+POST {{baseUrl}}/api/admin/variable-products
+Origin: {{cmsOrigin}}
+Content-Type: application/json
+
+{
+  "product_code": "TEE-COTTON",
+  "product_name": "Cotton tee",
+  "slug": "cotton-tee",
+  "product_type": "variable",
+  "product_status": "draft",
+  "details": {
+    "full_description": "Soft cotton tee",
+    "specifications": { "Material": "Cotton" }
+  },
+  "variants": [
+    {
+      "sku": "TEE-M-RED",
+      "attributes": { "Size": "M", "Color": "Red" },
+      "regular_price": 299,
+      "sale_price": 249,
+      "stock_quantity": 10,
+      "use_product_images": true
+    },
+    {
+      "sku": "TEE-L-RED",
+      "attributes": { "Size": "L", "Color": "Red" },
+      "regular_price": 299,
+      "sale_price": null,
+      "stock_quantity": 8,
+      "use_product_images": true
+    }
+  ]
+}
+
+### GET: load editor; response includes all associated variants (200 OK)
+GET {{baseUrl}}/api/admin/variable-products/{{productId}}
+
+### PATCH: edit existing variant and add XXL, preserving omitted L (200 OK)
+PATCH {{baseUrl}}/api/admin/variable-products/{{productId}}
+Origin: {{cmsOrigin}}
+Content-Type: application/json
+
+{
+  "product_name": "Cotton tee - expanded sizes",
+  "variants": [
+    {
+      "id": "{{variantId}}",
+      "sku": "TEE-M-RED-V2",
+      "sale_price": 229
+    },
+    {
+      "sku": "TEE-XXL-RED",
+      "attributes": { "Size": "XXL", "Color": "Red" },
+      "regular_price": 349,
+      "sale_price": 299,
+      "stock_quantity": 6,
+      "use_product_images": true
+    }
+  ]
+}
+
+# Response excerpts: variable-products-responses.json in this directory.
+# Offline tests (Node >=24 <27, dependencies already installed):
+#   node --test scripts/variable-products.test.js
+# The test suite injects in-memory persistence, and intercepts Sequelize SQL
+# generation. It does not import the application/database configuration or read
+# .env files. Its HTTP test only uses a temporary loopback Express server.
+# Do not use npm test for this verification: that invokes unrelated suites which
+# may load configuration or run database tests.

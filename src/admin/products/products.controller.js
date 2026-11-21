@@ -187,7 +187,7 @@ function pricesFrom(data, current = {}) {
   };
 }
 
-function productValues(data, current = null) {
+export function productValues(data, current = null) {
   const values = Object.fromEntries(
     PRODUCT_COLUMNS.filter((key) => has(data, key)).map((key) => [key, data[key]]),
   );
@@ -254,7 +254,7 @@ async function detailsValues(data, id, transaction) {
   return details;
 }
 
-async function saveDetails(id, data, transaction) {
+export async function saveDetails(id, data, transaction) {
   const values = await detailsValues(data, id, transaction);
 
   const columns = Object.keys(values);
@@ -539,7 +539,7 @@ function productResponse(product, images = [], inventory) {
 // GET COMPLETE PRODUCT
 // =====================================================
 
-async function getFullProduct(id, transaction) {
+export async function getFullProduct(id, transaction) {
   const [product] = await query(
     `
     SELECT

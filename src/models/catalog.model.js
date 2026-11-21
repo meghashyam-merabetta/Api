@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/database.js';
+import { defineProductVariant } from './product-variant.model.js';
 const options = {
   timestamps: true,
   underscored: true,
@@ -28,30 +29,7 @@ export const VariantAttribute = sequelize.define(
   },
   { ...options, tableName: 'product_variant_attributes' },
 );
-export const ProductVariant = sequelize.define(
-  'ProductVariant',
-  {
-    id,
-    product_id: { type: DataTypes.BIGINT, allowNull: false },
-    sku: { type: DataTypes.STRING(100), allowNull: false },
-    use_product_images: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    variant_name: DataTypes.STRING(200),
-    barcode: DataTypes.STRING(100),
-    weight_grams: DataTypes.INTEGER,
-    attributes: { type: DataTypes.JSONB, allowNull: false },
-    regular_price: DataTypes.DECIMAL(12, 2),
-    sale_price: DataTypes.DECIMAL(12, 2),
-    stock_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
-    is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
-    display_name: {
-      type: DataTypes.VIRTUAL,
-      get() {
-        return (
-          this.getDataValue('variant_name') ||
-          Object.values(this.getDataValue('attributes') ?? {}).join(' / ')
-        );
-      },
-    },
-  },
-  { ...options, paranoid: true, deletedAt: 'deleted_at', tableName: 'product_variants' },
-);
+export const ProductVariant = defineProductVariant(sequelize);
+// Phase 3 must never resolve the historical table through search_path.
+// Leave the legacy model binding unchanged for existing callers.
+export const PublicProductVariant = ProductVariant.schema('public');
